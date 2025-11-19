@@ -265,32 +265,46 @@ module MikMort
           w = width.inch
           d = depth.inch
           
-          # Create toe kick back panel (only the vertical panel at the recess depth)
+          # Create toe kick back panel at the recess depth
           # This creates the "back wall" of the toe kick recess
-          front_pts = [
+          back_pts = [
             [0, kick_depth, 0],
             [w, kick_depth, 0],
             [w, kick_depth, kick_height],
             [0, kick_depth, kick_height]
           ]
           
-          # Create front face
-          front_face = entities.add_face(front_pts)
-          if front_face && front_face.valid?
-            front_face.material = @materials.box_material
-            
-            # Create back face (slightly behind for panel thickness)
-            back_pts = front_pts.map { |pt| Geom::Point3d.new(pt.x, pt.y + thickness, pt.z) }
-            back_face = entities.add_face(back_pts.reverse)
-            back_face.material = @materials.box_material if back_face
-            
-            # Create side faces
-            front_pts.each_with_index do |pt, i|
-              next_i = (i + 1) % front_pts.length
-              side_pts = [front_pts[i], front_pts[next_i], back_pts[next_i], back_pts[i]]
-              side_face = entities.add_face(side_pts)
-              side_face.material = @materials.box_material if side_face
-            end
+          # Create back face of toe kick
+          back_face = entities.add_face(back_pts)
+          if back_face && back_face.valid?
+            back_face.material = @materials.box_material
+            back_face.back_material = @materials.box_material
+          end
+          
+          # Create left side panel connecting front to back
+          left_pts = [
+            [0, 0, 0],
+            [0, kick_depth, 0],
+            [0, kick_depth, kick_height],
+            [0, 0, kick_height]
+          ]
+          left_face = entities.add_face(left_pts)
+          if left_face && left_face.valid?
+            left_face.material = @materials.box_material
+            left_face.back_material = @materials.box_material
+          end
+          
+          # Create right side panel connecting front to back
+          right_pts = [
+            [w, 0, 0],
+            [w, 0, kick_height],
+            [w, kick_depth, kick_height],
+            [w, kick_depth, 0]
+          ]
+          right_face = entities.add_face(right_pts)
+          if right_face && right_face.valid?
+            right_face.material = @materials.box_material
+            right_face.back_material = @materials.box_material
           end
         end
         

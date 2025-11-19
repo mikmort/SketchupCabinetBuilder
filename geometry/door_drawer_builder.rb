@@ -101,9 +101,11 @@ module MikMort
           door_width = (width - total_reveal_width) / door_count
           door_height = total_height.inch - (2 * reveal)
           
-          # Position doors flush with front of cabinet box (at y=0)
+          # Position doors in front of cabinet box
+          # For frameless: door is at y = -thickness (door thickness extends forward)
+          # For framed: door is at y = -thickness - overlay
           door_z = start_z.inch + reveal
-          door_y = 0  # Flush with front of cabinet box
+          door_y = -thickness  # Door face starts at cabinet front and extends forward
           
           # Create each door in its own named group
           (0...door_count).each do |i|
