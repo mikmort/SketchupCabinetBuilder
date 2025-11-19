@@ -85,12 +85,12 @@ module MikMort
             
             # Add hardware to hardware group
             add_door_handle(hardware_group.entities, door_x, door_y, door_z, 
-                           door_width, door_height, thickness, i == 0 ? :right : :left, i + 1)
+                           door_width, door_height, thickness, i == 0 ? :right : :left)
           end
         end
         
         # Build drawers
-        def build_drawers(parent_group, cabinet, drawer_count, start_z, total_height)
+        def build_drawers(fronts_group, hardware_group, cabinet, drawer_count, start_z, total_height)
           reveal = Constants::DOOR_DRAWER[:reveal].inch
           thickness = Constants::DOOR_DRAWER[:thickness].inch
           overlay = cabinet.frame_type == :framed ? Constants::DOOR_DRAWER[:overlay].inch : 0
@@ -115,22 +115,26 @@ module MikMort
             drawer_width = width - (2 * reveal)
             actual_drawer_height = drawer_height_inch - (2 * reveal)
             
-            # Drawer face directly in parent
-            create_door_panel(parent_group.entities,
+            puts "DEBUG: Creating drawer #{i+1}: pos=[#{drawer_x}, #{drawer_y}, #{drawer_z}], size=[#{drawer_width}, #{thickness}, #{actual_drawer_height}]"
+            
+            # Drawer face in fronts group
+            result = create_door_panel(fronts_group.entities,
                             [drawer_x, drawer_y, drawer_z],
                             drawer_width, thickness, actual_drawer_height,
                             @materials.drawer_face_material)
             
-            # Add drawer box directly
-            add_drawer_box(parent_group.entities, drawer_x, drawer_y + thickness,
+            puts "DEBUG: Drawer face created: #{result ? 'success' : 'FAILED'}"
+            
+            # Add drawer box to fronts group (behind the face)
+            add_drawer_box(fronts_group.entities, drawer_x, drawer_y + thickness,
                           drawer_z, drawer_width, depth * 0.75, actual_drawer_height)
             
-            # Add drawer pull directly
-            add_drawer_handle(parent_group.entities, drawer_x, drawer_y, drawer_z,
+            # Add drawer pull to hardware group
+            add_drawer_handle(hardware_group.entities, drawer_x, drawer_y, drawer_z,
                             drawer_width, actual_drawer_height, thickness)
             
-            # Add drawer slides (simplified)
-            add_drawer_slides(drawer_group.entities, drawer_x, drawer_y + thickness,
+            # Add drawer slides to fronts group
+            add_drawer_slides(fronts_group.entities, drawer_x, drawer_y + thickness,
                             drawer_z, drawer_width, depth * 0.75, actual_drawer_height)
             
             current_z += drawer_height

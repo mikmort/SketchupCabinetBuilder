@@ -259,15 +259,35 @@ module MikMort
           thickness = Constants::BASE_CABINET[:panel_thickness].inch
           
           w = width.inch
+          d = depth.inch
           
-          # Create toe kick front panel (recessed)
-          pts = [
-            [0, kick_depth - thickness, 0],
-            [w, kick_depth - thickness, 0],
+          # Create toe kick back panel (only the vertical panel at the recess depth)
+          # This creates the "back wall" of the toe kick recess
+          front_pts = [
+            [0, kick_depth, 0],
             [w, kick_depth, 0],
-            [0, kick_depth, 0]
+            [w, kick_depth, kick_height],
+            [0, kick_depth, kick_height]
           ]
-          create_simple_box(entities, pts, kick_height, @materials.box_material)
+          
+          # Create front face
+          front_face = entities.add_face(front_pts)
+          if front_face && front_face.valid?
+            front_face.material = @materials.box_material
+            
+            # Create back face (slightly behind for panel thickness)
+            back_pts = front_pts.map { |pt| Geom::Point3d.new(pt.x, pt.y + thickness, pt.z) }
+            back_face = entities.add_face(back_pts.reverse)
+            back_face.material = @materials.box_material if back_face
+            
+            # Create side faces
+            front_pts.each_with_index do |pt, i|
+              next_i = (i + 1) % front_pts.length
+              side_pts = [front_pts[i], front_pts[next_i], back_pts[next_i], back_pts[i]]
+              side_face = entities.add_face(side_pts)
+              side_face.material = @materials.box_material if side_face
+            end
+          end
         end
         
         # Build SubZero refrigerator enclosure

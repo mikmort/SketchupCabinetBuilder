@@ -49,6 +49,12 @@ module MikMort
       
       # Add JavaScript callbacks
       def add_callbacks
+        # Get existing cabinet runs
+        @dialog.add_action_callback('get_existing_runs') do |action_context|
+          runs = get_existing_runs
+          @dialog.execute_script("receiveExistingRuns(#{runs.to_json})")
+        end
+        
         # Handle cabinet creation
         @dialog.add_action_callback('create_cabinet') do |action_context, params|
           handle_create_cabinet(params)
@@ -57,6 +63,25 @@ module MikMort
         # Handle cancel
         @dialog.add_action_callback('cancel') do |action_context|
           @dialog.close
+        end
+      end
+      
+      # Get all existing cabinet runs from model
+      def get_existing_runs
+        model = Sketchup.active_model
+        connection_manager = Geometry::CabinetConnectionManager.new(model)
+        runs = connection_manager.get_all_runs
+        
+        runs.map do |run|
+          {
+            name: run[:name],
+            cabinet_count: run[:cabinet_count],
+            bounds: {
+              min_x: (run[:bounds].min.x / 1.inch).round(2),
+              max_x: (run[:bounds].max.x / 1.inch).round(2),
+              width: (run[:bounds].width / 1.inch).round(2)
+            }
+          }
         end
       end
       
@@ -129,7 +154,21 @@ module MikMort
           puts "Creating cabinet with options: #{options.inspect}"
           cabinet = Cabinet.new(type, options)
           
-          result = generator.generate_cabinet(cabinet)
+          # Handle run connection option
+          run_option = params['run_connection'] || 'auto'
+          
+          case run_option
+          when 'new_run'
+            # Force creation of new run
+            result = generator.generate_cabinet(cabinet, force_new_run: true)
+          when 'extend_run'
+            # Find and extend existing run
+            run_name = params['target_run']
+            result = generator.generate_cabinet(cabinet, extend_run: run_name)
+          else
+            # Auto mode (default behavior)
+            result = generator.generate_cabinet(cabinet)
+          end
           
           if result
             UI.messagebox("Cabinet created successfully!")

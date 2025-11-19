@@ -141,9 +141,10 @@ module MikMort
           
           puts "DEBUG auto_position: Checking cabinet at x=#{right_edge_x}, y=#{cabinet_y}, z=#{cabinet_z}"
           
-          # Check if at similar height and depth (within 1")
-          height_match = (cabinet_z - cabinet.position[2]).abs < 1
-          depth_match = (cabinet_y - cabinet.position[1]).abs < 1
+          # Check if at similar height and depth (within 3" tolerance)
+          # For first cabinet, position is [0,0,0] so we need looser matching
+          height_match = (cabinet_z - cabinet.position[2]).abs < 3
+          depth_match = true  # Accept any depth for now to get cabinets positioned
           
           if height_match && depth_match
             if right_edge_x > rightmost_x
@@ -155,9 +156,11 @@ module MikMort
         end
         
         if rightmost
-          # Place to the right of rightmost cabinet
-          x = rightmost_x
-          y = rightmost.bounds.min.y / 1.inch
+          # Place to the right of rightmost cabinet with no gap
+          x = rightmost_x  # This is already the right edge
+          # Use the original cabinet's Y position (depth), not the previous cabinet's
+          # This prevents forward drift from countertop overhang
+          y = cabinet.position[1]
           z = rightmost.bounds.min.z / 1.inch
           puts "DEBUG auto_position: Positioning next to rightmost: [#{x}, #{y}, #{z}]"
           [x, y, z]
@@ -165,6 +168,82 @@ module MikMort
           # No matching cabinet found, use original position
           puts "DEBUG auto_position: No matching cabinet, using original position"
           cabinet.position
+        end
+      end
+      
+      # Get all existing cabinet runs in the model
+      # @return [Array<Hash>] Array of run info: {:group, :name, :cabinet_count, :bounds}
+      def get_all_runs
+        runs = []
+        
+        @model.active_entities.each do |entity|
+          next unless entity.is_a?(Sketchup::Group)
+          
+          if entity.name.start_with?('Cabinet_Run_')
+            cabinet_count = entity.entities.grep(Sketchup::Group).select { |g|
+              g.name.start_with?('CABINET_') || g.name.start_with?('Cabinet_')
+            }.count
+            
+            runs << {
+              group: entity,
+              name: entity.name,
+              cabinet_count: cabinet_count,
+              bounds: entity.bounds
+            }
+          end
+        end
+        
+        runs
+      end
+      
+      # Connect cabinet to a specific run
+      # @param cabinet_group [Sketchup::Group] Cabinet to add
+      # @param run_group [Sketchup::Group] Target run
+      # @param side [Symbol] :left or :right - which side to add to
+      # @return [Sketchup::Group] The run group
+      def connect_to_run(cabinet_group, run_group, side = :right)
+        @model.start_operation('Connect to Run', true)
+        
+        begin
+          # Get run bounds
+          run_bounds = run_group.bounds
+          
+          # Position cabinet at appropriate side
+          if side == :right
+            # Add to right side
+            new_x = run_bounds.max.x
+            new_y = run_bounds.min.y
+            new_z = run_bounds.min.z
+          else
+            # Add to left side
+            cabinet_width = cabinet_group.bounds.width
+            new_x = run_bounds.min.x - cabinet_width
+            new_y = run_bounds.min.y
+            new_z = run_bounds.min.z
+          end
+          
+          # Move cabinet to position
+          current_pos = cabinet_group.bounds.min
+          offset = Geom::Vector3d.new(
+            new_x - current_pos.x,
+            new_y - current_pos.y,
+            new_z - current_pos.z
+          )
+          cabinet_group.transform!(Geom::Transformation.translation(offset))
+          
+          # Move cabinet into run group
+          move_to_group(cabinet_group, run_group)
+          
+          # Update run countertop
+          update_run_countertop(run_group)
+          
+          @model.commit_operation
+          run_group
+        rescue => e
+          @model.abort_operation
+          puts "Error connecting to run: #{e.message}"
+          puts e.backtrace.first(5).join("\n")
+          nil
         end
       end
       

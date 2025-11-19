@@ -250,6 +250,32 @@
             </div>
         </div>
         
+        <!-- Run Connection Options (for single cabinet mode) -->
+        <div id="run_connection_options" class="section">
+            <label>Cabinet Run Connection</label>
+            <div class="radio-group" style="flex-direction: column; gap: 8px;">
+                <label>
+                    <input type="radio" name="run_connection" value="auto" checked>
+                    Auto (extend nearest run)
+                </label>
+                <label>
+                    <input type="radio" name="run_connection" value="new_run">
+                    Create new run
+                </label>
+                <label>
+                    <input type="radio" name="run_connection" value="extend_run">
+                    Extend specific run
+                </label>
+            </div>
+            
+            <div id="run_selector" style="display: none; margin-top: 12px;">
+                <label for="target_run">Select Run to Extend</label>
+                <select id="target_run">
+                    <option value="">-- No runs available --</option>
+                </select>
+            </div>
+        </div>
+        
         <!-- Single Cabinet Options -->
         <div id="single_cabinet_options" class="section">
             <label for="cabinet_type">Cabinet Type</label>
@@ -377,6 +403,49 @@
     
     <script>
         let applianceGapCount = 0;
+        let existingRuns = [];
+        
+        // Load existing runs when dialog opens
+        window.addEventListener('load', function() {
+            sketchup.get_existing_runs();
+        });
+        
+        // Receive existing runs from Ruby
+        function receiveExistingRuns(runs) {
+            existingRuns = runs;
+            updateRunSelector();
+        }
+        
+        // Update run selector dropdown
+        function updateRunSelector() {
+            const selector = document.getElementById('target_run');
+            selector.innerHTML = '';
+            
+            if (existingRuns.length === 0) {
+                selector.innerHTML = '<option value="">-- No runs available --</option>';
+            } else {
+                existingRuns.forEach(run => {
+                    const option = document.createElement('option');
+                    option.value = run.name;
+                    option.textContent = `${run.name} (${run.cabinet_count} cabinets, ${run.bounds.width}")`;
+                    selector.appendChild(option);
+                });
+            }
+        }
+        
+        // Run connection mode handling
+        document.querySelectorAll('input[name="run_connection"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                const runSelector = document.getElementById('run_selector');
+                if (this.value === 'extend_run') {
+                    runSelector.style.display = 'block';
+                    // Refresh the list of runs
+                    sketchup.get_existing_runs();
+                } else {
+                    runSelector.style.display = 'none';
+                }
+            });
+        });
         
         // Preset button handling
         document.querySelectorAll('.preset-btn').forEach(btn => {
@@ -391,12 +460,15 @@
         // Build mode toggle
         document.querySelectorAll('input[name="build_mode"]').forEach(radio => {
             radio.addEventListener('change', function() {
+                const runConnectionOptions = document.getElementById('run_connection_options');
                 if (this.value === 'single') {
                     document.getElementById('single_cabinet_options').style.display = 'block';
                     document.getElementById('cabinet_run_options').style.display = 'none';
+                    runConnectionOptions.style.display = 'block';
                 } else {
                     document.getElementById('single_cabinet_options').style.display = 'none';
                     document.getElementById('cabinet_run_options').style.display = 'block';
+                    runConnectionOptions.style.display = 'none';
                 }
             });
         });
@@ -520,6 +592,18 @@
             };
             
             if (buildMode === 'single') {
+                // Get run connection option
+                const runConnection = document.querySelector('input[name="run_connection"]:checked').value;
+                data.run_connection = runConnection;
+                
+                if (runConnection === 'extend_run') {
+                    data.target_run = document.getElementById('target_run').value;
+                    if (!data.target_run) {
+                        alert('Please select a run to extend');
+                        return;
+                    }
+                }
+                
                 // Get width
                 let width = document.getElementById('width').value;
                 if (width === 'custom') {

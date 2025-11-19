@@ -19,18 +19,30 @@ module MikMort
         
         # Generate a single cabinet
         # @param cabinet [Cabinet] Cabinet specification
+        # @param options [Hash] Options for run connection
+        #   :force_new_run - Create new run even if nearby cabinets exist
+        #   :extend_run - Name of specific run to extend
         # @return [Sketchup::Group] The complete cabinet group
-        def generate_cabinet(cabinet)
+        def generate_cabinet(cabinet, options = {})
           return nil unless cabinet.valid?
           
           @model.start_operation('Create Cabinet', true)
           
           begin
-            # Always check for auto-positioning to place cabinets next to each other
-            adjusted_position = @connection_manager.auto_position_cabinet(cabinet)
-            cabinet.position = adjusted_position
+            # Handle run connection options
+            if options[:extend_run]
+              # Extend specific run
+              return extend_specific_run(cabinet, options[:extend_run])
+            elsif options[:force_new_run]
+              # Create standalone or new run
+              return create_standalone_cabinet(cabinet)
+            else
+              # Auto mode: position next to existing cabinets
+              adjusted_position = @connection_manager.auto_position_cabinet(cabinet)
+              cabinet.position = adjusted_position
+            end
             
-            puts "DEBUG: Creating cabinet at position: #{adjusted_position.inspect}"
+            puts "DEBUG: Creating cabinet at position: #{cabinet.position.inspect}"
             
             # Check for nearby cabinets to connect to (after positioning)
             connection = @connection_manager.find_nearby_cabinet(cabinet.position, cabinet.type)
@@ -190,6 +202,108 @@ module MikMort
           face = filler_group.entities.add_face(pts)
           face.material = @materials.box_material
           face.pushpull(depth)
+        end
+        
+        private
+        
+        # Create a standalone cabinet (not connected to any run)
+        def create_standalone_cabinet(cabinet)
+          # Create main cabinet group with descriptive name
+          frame_type = cabinet.frame_type == :framed ? "Framed" : "Frameless"
+          width_mm = (cabinet.width * 25.4).round
+          depth_mm = (cabinet.depth * 25.4).round
+          component_name = "CABINET_#{cabinet.type.to_s.capitalize}_#{width_mm}x#{depth_mm}_#{frame_type}"
+          
+          cabinet_group = @model.active_entities.add_group
+          cabinet_group.name = component_name
+          
+          # Create organized sub-groups
+          carcass_group = cabinet_group.entities.add_group
+          carcass_group.name = "Carcass"
+          
+          fronts_group = cabinet_group.entities.add_group
+          fronts_group.name = "Fronts"
+          
+          hardware_group = cabinet_group.entities.add_group
+          hardware_group.name = "Hardware"
+          
+          # Build cabinet box (carcass)
+          @box_builder.build(cabinet, carcass_group)
+          
+          # Build doors and drawers (fronts + hardware)
+          @door_drawer_builder.build(cabinet, fronts_group, hardware_group)
+          
+          # Build countertop if specified
+          if cabinet.has_countertop
+            @countertop_builder.build(cabinet, cabinet_group)
+          end
+          
+          # Position the cabinet
+          x, y, z = cabinet.position
+          cabinet_group.transformation = Geom::Transformation.new([x.inch, y.inch, z.inch])
+          
+          # Validate geometry
+          @validator.validate_cabinet(cabinet, cabinet_group)
+          
+          cabinet_group
+        end
+        
+        # Extend a specific cabinet run
+        def extend_specific_run(cabinet, run_name)
+          # Find the run
+          runs = @connection_manager.get_all_runs
+          target_run = runs.find { |r| r[:name] == run_name }
+          
+          unless target_run
+            @model.abort_operation
+            UI.messagebox("Cabinet run '#{run_name}' not found!")
+            return nil
+          end
+          
+          # Build cabinet group
+          cabinet_group = build_cabinet_group(cabinet)
+          
+          # Connect to the run (default: right side)
+          result = @connection_manager.connect_to_run(cabinet_group, target_run[:group], :right)
+          
+          result
+        end
+        
+        # Build a cabinet group with all components
+        def build_cabinet_group(cabinet)
+          frame_type = cabinet.frame_type == :framed ? "Framed" : "Frameless"
+          width_mm = (cabinet.width * 25.4).round
+          depth_mm = (cabinet.depth * 25.4).round
+          component_name = "CABINET_#{cabinet.type.to_s.capitalize}_#{width_mm}x#{depth_mm}_#{frame_type}"
+          
+          cabinet_group = @model.active_entities.add_group
+          cabinet_group.name = component_name
+          
+          # Create organized sub-groups
+          carcass_group = cabinet_group.entities.add_group
+          carcass_group.name = "Carcass"
+          
+          fronts_group = cabinet_group.entities.add_group
+          fronts_group.name = "Fronts"
+          
+          hardware_group = cabinet_group.entities.add_group
+          hardware_group.name = "Hardware"
+          
+          # Build components
+          @box_builder.build(cabinet, carcass_group)
+          @door_drawer_builder.build(cabinet, fronts_group, hardware_group)
+          
+          if cabinet.has_countertop
+            @countertop_builder.build(cabinet, cabinet_group)
+          end
+          
+          # Position
+          x, y, z = cabinet.position
+          cabinet_group.transformation = Geom::Transformation.new([x.inch, y.inch, z.inch])
+          
+          @validator.validate_cabinet(cabinet, cabinet_group)
+          
+          cabinet_group
         end
         
       end
