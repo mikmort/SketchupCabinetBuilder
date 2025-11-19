@@ -136,7 +136,8 @@ module MikMort
           cabinet_y = bounds.min.y / 1.inch
           right_edge_x = bounds.max.x / 1.inch
           
-          puts "DEBUG auto_position: Checking cabinet at x=#{right_edge_x}, y=#{cabinet_y}, z=#{cabinet_z}"
+          puts "DEBUG auto_position: Checking cabinet at x=#{right_edge_x.round(4)}, y=#{cabinet_y.round(4)}, z=#{cabinet_z.round(4)}"
+          puts "DEBUG auto_position: Cabinet bounds width: #{(bounds.width / 1.inch).round(4)}\""
           
           # Check if at similar height and depth (within 3" tolerance)
           # For first cabinet, position is [0,0,0] so we need looser matching
@@ -147,19 +148,19 @@ module MikMort
             if right_edge_x > rightmost_x
               rightmost_x = right_edge_x
               rightmost = group
-              puts "DEBUG auto_position: Found new rightmost at x=#{rightmost_x}"
+              puts "DEBUG auto_position: Found new rightmost at x=#{rightmost_x.round(4)}\""
             end
           end
         end
         
         if rightmost
           # Place to the right of rightmost cabinet with no gap
-          x = rightmost_x  # This is already the right edge
+          x = rightmost_x  # This is already the right edge in inches
           # Use the original cabinet's Y position (depth), not the previous cabinet's
           # This prevents forward drift from countertop overhang
           y = cabinet.position[1]
           z = rightmost.bounds.min.z / 1.inch
-          puts "DEBUG auto_position: Positioning next to rightmost: [#{x}, #{y}, #{z}]"
+          puts "DEBUG auto_position: Positioning next cabinet at: [#{x.round(4)}, #{y}, #{z}]\""
           [x, y, z]
         else
           # No matching cabinet found, use original position

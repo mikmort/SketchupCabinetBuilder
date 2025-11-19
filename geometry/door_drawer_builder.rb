@@ -39,7 +39,8 @@ module MikMort
               section_height = available_height * section[:ratio]
               
               if section[:type] == :drawer
-                build_drawers(fronts_group, hardware_group, cabinet, section[:count], current_z, section_height)
+                equal_sizing = section[:equal_sizing] || false
+                build_drawers(fronts_group, hardware_group, cabinet, section[:count], current_z, section_height, equal_sizing)
               else
                 # Determine door count based on cabinet width
                 door_count = (cabinet.width > 30) ? 2 : 1
@@ -126,7 +127,7 @@ module MikMort
         end
         
         # Build drawers
-        def build_drawers(fronts_group, hardware_group, cabinet, drawer_count, start_z, total_height)
+        def build_drawers(fronts_group, hardware_group, cabinet, drawer_count, start_z, total_height, equal_sizing = false)
           reveal = Constants::DOOR_DRAWER[:reveal].inch
           thickness = Constants::DOOR_DRAWER[:thickness].inch
           overlay = cabinet.frame_type == :framed ? Constants::DOOR_DRAWER[:overlay].inch : 0
@@ -135,8 +136,7 @@ module MikMort
           depth = cabinet.depth.inch
           
           # Calculate individual drawer heights
-          # Use graduated sizing if more than 2 drawers
-          drawer_heights = calculate_drawer_heights(drawer_count, total_height)
+          drawer_heights = calculate_drawer_heights(drawer_count, total_height, equal_sizing)
           
           current_z = start_z
           
@@ -181,23 +181,29 @@ module MikMort
         end
         
         # Calculate graduated drawer heights
-        def calculate_drawer_heights(count, total_height)
+        def calculate_drawer_heights(count, total_height, equal_sizing = false)
           heights = []
           
-          case count
-          when 1
-            heights = [total_height]
-          when 2
-            heights = [total_height * 0.45, total_height * 0.55]
-          when 3
-            heights = [total_height * 0.25, total_height * 0.30, total_height * 0.45]
-          when 4
-            heights = [total_height * 0.20, total_height * 0.25, total_height * 0.25, total_height * 0.30]
-          when 5
-            heights = [total_height * 0.15, total_height * 0.18, total_height * 0.20, total_height * 0.22, total_height * 0.25]
-          else
-            # Equal distribution for 6+ drawers or any other case
+          # If equal sizing is requested, distribute evenly
+          if equal_sizing
             heights = Array.new(count, total_height / count.to_f)
+          else
+            # Use graduated sizing
+            case count
+            when 1
+              heights = [total_height]
+            when 2
+              heights = [total_height * 0.45, total_height * 0.55]
+            when 3
+              heights = [total_height * 0.25, total_height * 0.30, total_height * 0.45]
+            when 4
+              heights = [total_height * 0.20, total_height * 0.25, total_height * 0.25, total_height * 0.30]
+            when 5
+              heights = [total_height * 0.15, total_height * 0.18, total_height * 0.20, total_height * 0.22, total_height * 0.25]
+            else
+              # Equal distribution for 6+ drawers
+              heights = Array.new(count, total_height / count.to_f)
+            end
           end
           
           heights
