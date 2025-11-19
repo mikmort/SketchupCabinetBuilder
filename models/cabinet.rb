@@ -123,6 +123,10 @@ module MikMort
           @width = 24.0
           @depth = Constants::WALL_STACK[:depth]
           @height = Constants::WALL_STACK[:total_height]
+        when :wall_stack_9ft
+          @width = 24.0
+          @depth = Constants::WALL_STACK_9FT[:depth]
+          @height = Constants::WALL_STACK_9FT[:total_height]
         when :island
           @width = 36.0
           @depth = Constants::ISLAND_CABINET[:depth]

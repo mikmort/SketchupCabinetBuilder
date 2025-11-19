@@ -20,8 +20,8 @@ module MikMort
         def build(cabinet, fronts_group, hardware_group)
           begin
             # Special handling for wall stack - create doors for each section
-            if cabinet.type == :wall_stack
-              build_wall_stack_doors(cabinet, fronts_group, hardware_group)
+            if cabinet.type == :wall_stack || cabinet.type == :wall_stack_9ft
+              build_wall_stack_doors(cabinet)
               return
             end
             
@@ -56,15 +56,18 @@ module MikMort
         
         private
         
-        # Build doors for wall stack (42" lower + two 12" stacked)
+        # Build doors for wall stack (42" lower + stacked upper)
         def build_wall_stack_doors(cabinet, fronts_group, hardware_group)
+          # Get configuration based on type
+          config = cabinet.type == :wall_stack_9ft ? Constants::WALL_STACK_9FT : Constants::WALL_STACK
+          
           reveal = Constants::DOOR_DRAWER[:reveal].inch
           thickness = Constants::DOOR_DRAWER[:thickness].inch
           
-          lower_height = Constants::WALL_STACK[:lower_height]
-          upper_height = Constants::WALL_STACK[:upper_stack_height]
-          stack_count = Constants::WALL_STACK[:upper_stack_count]
-          stack_reveal = Constants::WALL_STACK[:stack_reveal].inch
+          lower_height = config[:lower_height]
+          upper_height = config[:upper_stack_height]
+          stack_count = config[:upper_stack_count]
+          stack_reveal = config[:stack_reveal].inch
           
           width = cabinet.width.inch
           door_count = (cabinet.width > 30) ? 2 : 1

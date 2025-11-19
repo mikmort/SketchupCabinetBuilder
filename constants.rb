@@ -41,6 +41,18 @@ module MikMort
         stack_reveal: 0.125   # Small reveal between sections
       }.freeze
       
+      # Wall Stack 9-foot Configuration (9-foot ceiling)
+      WALL_STACK_9FT = {
+        depth: 12.0,          # Same as wall cabinet
+        lower_height: 42.0,   # Main upper cabinet (42")
+        upper_stack_count: 1, # One stacked cabinet
+        upper_stack_height: 12.0, # Stack is 12"
+        total_height: 54.0,   # 42" + 12" = 54" total
+        panel_thickness: 0.75,
+        mounting_height: 54.0, # Same as standard wall
+        stack_reveal: 0.125   # Small reveal between sections
+      }.freeze
+      
       # Island Cabinet Standards
       ISLAND_CABINET = {
         depth: 36.0,          # Deeper for overhang
@@ -173,6 +185,7 @@ module MikMort
         :base,
         :wall,
         :wall_stack,
+        :wall_stack_9ft,
         :island,
         :tall,
         :corner_base,

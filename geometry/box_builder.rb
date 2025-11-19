@@ -22,7 +22,9 @@ module MikMort
           when :corner_base, :corner_wall
             build_corner_box(cabinet, parent_group)
           when :wall_stack
-            build_wall_stack_box(cabinet, parent_group)
+            build_wall_stack_box(cabinet, parent_group, :wall_stack)
+          when :wall_stack_9ft
+            build_wall_stack_box(cabinet, parent_group, :wall_stack_9ft)
           when :subzero_fridge
             build_subzero_box(cabinet, parent_group)
           when :miele_dishwasher
@@ -477,16 +479,19 @@ module MikMort
           end
         end
         
-        # Build wall stack (42" lower + two 12" stacked upper)
-        def build_wall_stack_box(cabinet, carcass_group)
+        # Build wall stack (42" lower + stacked upper)
+        def build_wall_stack_box(cabinet, carcass_group, config_type = :wall_stack)
           begin
+            # Get configuration based on type
+            config = config_type == :wall_stack_9ft ? Constants::WALL_STACK_9FT : Constants::WALL_STACK
+            
             width = cabinet.width
-            depth = Constants::WALL_STACK[:depth]
-            lower_height = Constants::WALL_STACK[:lower_height]
-            upper_height = Constants::WALL_STACK[:upper_stack_height]
-            stack_count = Constants::WALL_STACK[:upper_stack_count]
-            reveal = Constants::WALL_STACK[:stack_reveal]
-            thickness = Constants::WALL_STACK[:panel_thickness]
+            depth = config[:depth]
+            lower_height = config[:lower_height]
+            upper_height = config[:upper_stack_height]
+            stack_count = config[:upper_stack_count]
+            reveal = config[:stack_reveal]
+            thickness = config[:panel_thickness]
             
             # Convert to SketchUp units
             w = width.inch
