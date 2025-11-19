@@ -19,6 +19,12 @@ module MikMort
         # @return [Array<Sketchup::Group>] Array of door/drawer groups
         def build(cabinet, fronts_group, hardware_group)
           begin
+            # Special handling for wall stack - create doors for each section
+            if cabinet.type == :wall_stack
+              build_wall_stack_doors(cabinet, fronts_group, hardware_group)
+              return
+            end
+            
             config_sections = cabinet.parse_config
             
             # Calculate available height for doors/drawers
@@ -49,6 +55,33 @@ module MikMort
         end
         
         private
+        
+        # Build doors for wall stack (42" lower + two 12" stacked)
+        def build_wall_stack_doors(cabinet, fronts_group, hardware_group)
+          reveal = Constants::DOOR_DRAWER[:reveal].inch
+          thickness = Constants::DOOR_DRAWER[:thickness].inch
+          
+          lower_height = Constants::WALL_STACK[:lower_height]
+          upper_height = Constants::WALL_STACK[:upper_stack_height]
+          stack_count = Constants::WALL_STACK[:upper_stack_count]
+          stack_reveal = Constants::WALL_STACK[:stack_reveal].inch
+          
+          width = cabinet.width.inch
+          door_count = (cabinet.width > 30) ? 2 : 1
+          
+          current_z = 0
+          
+          # Lower 42" doors
+          build_doors(fronts_group, hardware_group, cabinet, door_count, current_z, lower_height)
+          
+          current_z += lower_height + (stack_reveal / 1.inch)
+          
+          # Stacked 12" doors (two separate units)
+          stack_count.times do |i|
+            build_doors(fronts_group, hardware_group, cabinet, door_count, current_z, upper_height)
+            current_z += upper_height + (stack_reveal / 1.inch)
+          end
+        end
         
         # Build doors
         def build_doors(fronts_group, hardware_group, cabinet, door_count, start_z, total_height)
@@ -105,7 +138,8 @@ module MikMort
           current_z = start_z
           
           drawer_heights.each_with_index do |drawer_height, i|
-            drawer_height_inch = drawer_height.inch
+            # drawer_height is already in inches (as a number)
+            # start_z and current_z are also in inches (as numbers)
             
             # Create drawer front directly in parent (NO sub-group)
             drawer_x = reveal
@@ -113,7 +147,8 @@ module MikMort
             drawer_z = current_z.inch + reveal
             
             drawer_width = width - (2 * reveal)
-            actual_drawer_height = drawer_height_inch - (2 * reveal)
+            # Subtract reveals from height (drawer_height is in inches as a number)
+            actual_drawer_height = drawer_height.inch - (2 * reveal)
             
             puts "DEBUG: Creating drawer #{i+1}: pos=[#{drawer_x}, #{drawer_y}, #{drawer_z}], size=[#{drawer_width}, #{thickness}, #{actual_drawer_height}]"
             
@@ -137,6 +172,7 @@ module MikMort
             add_drawer_slides(fronts_group.entities, drawer_x, drawer_y + thickness,
                             drawer_z, drawer_width, depth * 0.75, actual_drawer_height)
             
+            # Move to next drawer position (drawer_height is in inches)
             current_z += drawer_height
           end
         end
@@ -154,8 +190,10 @@ module MikMort
             heights = [total_height * 0.25, total_height * 0.30, total_height * 0.45]
           when 4
             heights = [total_height * 0.20, total_height * 0.25, total_height * 0.25, total_height * 0.30]
+          when 5
+            heights = [total_height * 0.15, total_height * 0.18, total_height * 0.20, total_height * 0.22, total_height * 0.25]
           else
-            # Equal distribution
+            # Equal distribution for 6+ drawers or any other case
             heights = Array.new(count, total_height / count.to_f)
           end
           

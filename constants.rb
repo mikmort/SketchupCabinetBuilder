@@ -29,6 +29,18 @@ module MikMort
         mounting_height: 54.0 # Bottom of cabinet from floor (18" above 36" counter)
       }.freeze
       
+      # Wall Stack Configuration (10-foot stack)
+      WALL_STACK = {
+        depth: 12.0,          # Same as wall cabinet
+        lower_height: 42.0,   # Main upper cabinet (42")
+        upper_stack_count: 2, # Two stacked cabinets
+        upper_stack_height: 12.0, # Each stack is 12"
+        total_height: 66.0,   # 42" + (2 × 12") = 66" total
+        panel_thickness: 0.75,
+        mounting_height: 54.0, # Same as standard wall
+        stack_reveal: 0.125   # Small reveal between sections
+      }.freeze
+      
       # Island Cabinet Standards
       ISLAND_CABINET = {
         depth: 36.0,          # Deeper for overhang
@@ -160,6 +172,7 @@ module MikMort
       CABINET_TYPES = [
         :base,
         :wall,
+        :wall_stack,
         :island,
         :tall,
         :corner_base,

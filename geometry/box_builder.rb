@@ -21,6 +21,8 @@ module MikMort
           case cabinet.type
           when :corner_base, :corner_wall
             build_corner_box(cabinet, parent_group)
+          when :wall_stack
+            build_wall_stack_box(cabinet, parent_group)
           when :subzero_fridge
             build_subzero_box(cabinet, parent_group)
           when :miele_dishwasher
@@ -414,6 +416,43 @@ module MikMort
               cooktop.back_material = @materials.interior_material
             end
             
+            # Add burners on cooktop (4 burners typical)
+            burner_radius = 4.inch
+            burner_height = 0.5.inch
+            
+            if width >= 30
+              # Calculate burner positions based on range width
+              margin = 4.inch
+              spacing_x = (w - 2 * margin - 2 * burner_radius) / 1.0  # space between left and right
+              spacing_y = (d - 2 * margin - 2 * burner_radius) / 1.0  # space between front and back
+              
+              burner_positions = [
+                [margin + burner_radius, margin + burner_radius, cooktop_height + 0.1.inch],  # Front left
+                [margin + burner_radius + spacing_x, margin + burner_radius, cooktop_height + 0.1.inch],  # Front right
+                [margin + burner_radius, margin + burner_radius + spacing_y, cooktop_height + 0.1.inch],  # Back left
+                [margin + burner_radius + spacing_x, margin + burner_radius + spacing_y, cooktop_height + 0.1.inch]   # Back right
+              ]
+              
+              burner_positions.each_with_index do |pos, i|
+                # Create burner group
+                burner_group = placeholder_group.entities.add_group
+                burner_group.name = "Burner_#{i+1}"
+                
+                # Outer ring (grate)
+                circle_outer = burner_group.entities.add_circle(pos, [0, 0, 1], burner_radius, 32)
+                if circle_outer && circle_outer.length > 0
+                  face = burner_group.entities.add_face(circle_outer)
+                  if face && face.valid?
+                    face.material = [64, 64, 64]  # Dark gray
+                    # Create ring by adding inner circle
+                    circle_inner = burner_group.entities.add_circle(pos, [0, 0, 1], burner_radius * 0.6, 32)
+                    inner_face = burner_group.entities.add_face(circle_inner) if circle_inner
+                    inner_face.erase! if inner_face && inner_face.valid?  # Create hole
+                  end
+                end
+              end
+            end
+            
             # Side markers to show range width
             left_marker = carcass_group.entities.add_group
             left_marker.name = "Left Marker"
@@ -434,6 +473,89 @@ module MikMort
             
           rescue => e
             puts "Error building range placeholder: #{e.message}"
+            puts e.backtrace.first(3).join("\n")
+          end
+        end
+        
+        # Build wall stack (42" lower + two 12" stacked upper)
+        def build_wall_stack_box(cabinet, carcass_group)
+          begin
+            width = cabinet.width
+            depth = Constants::WALL_STACK[:depth]
+            lower_height = Constants::WALL_STACK[:lower_height]
+            upper_height = Constants::WALL_STACK[:upper_stack_height]
+            stack_count = Constants::WALL_STACK[:upper_stack_count]
+            reveal = Constants::WALL_STACK[:stack_reveal]
+            thickness = Constants::WALL_STACK[:panel_thickness]
+            
+            # Convert to SketchUp units
+            w = width.inch
+            d = depth.inch
+            t = thickness.inch
+            r = reveal.inch
+            
+            current_z = 0
+            
+            # Build lower 42" cabinet
+            lower_group = carcass_group.entities.add_group
+            lower_group.name = "Lower_42in"
+            
+            add_panel(lower_group.entities, "Bottom", 
+                     [[0, 0, current_z], [w, 0, current_z], [w, d, current_z], [0, d, current_z]], 
+                     t, :up)
+            
+            add_panel(lower_group.entities, "Left Side",
+                     [[0, 0, current_z], [0, d, current_z], [0, d, current_z + lower_height.inch], [0, 0, current_z + lower_height.inch]],
+                     t, :right)
+            
+            add_panel(lower_group.entities, "Right Side",
+                     [[w, 0, current_z], [w, 0, current_z + lower_height.inch], [w, d, current_z + lower_height.inch], [w, d, current_z]],
+                     t, :left)
+            
+            add_panel(lower_group.entities, "Back",
+                     [[0, d, current_z], [w, d, current_z], [w, d, current_z + lower_height.inch], [0, d, current_z + lower_height.inch]],
+                     t, :forward)
+            
+            add_panel(lower_group.entities, "Top",
+                     [[0, 0, current_z + lower_height.inch], [w, 0, current_z + lower_height.inch], 
+                      [w, d, current_z + lower_height.inch], [0, d, current_z + lower_height.inch]],
+                     t, :down)
+            
+            current_z += lower_height.inch + r
+            
+            # Build stacked upper cabinets (two 12" units)
+            stack_count.times do |i|
+              stack_group = carcass_group.entities.add_group
+              stack_group.name = "Stack_#{i+1}_12in"
+              
+              z_start = current_z
+              
+              add_panel(stack_group.entities, "Bottom",
+                       [[0, 0, z_start], [w, 0, z_start], [w, d, z_start], [0, d, z_start]],
+                       t, :up)
+              
+              add_panel(stack_group.entities, "Left Side",
+                       [[0, 0, z_start], [0, d, z_start], [0, d, z_start + upper_height.inch], [0, 0, z_start + upper_height.inch]],
+                       t, :right)
+              
+              add_panel(stack_group.entities, "Right Side",
+                       [[w, 0, z_start], [w, 0, z_start + upper_height.inch], [w, d, z_start + upper_height.inch], [w, d, z_start]],
+                       t, :left)
+              
+              add_panel(stack_group.entities, "Back",
+                       [[0, d, z_start], [w, d, z_start], [w, d, z_start + upper_height.inch], [0, d, z_start + upper_height.inch]],
+                       t, :forward)
+              
+              add_panel(stack_group.entities, "Top",
+                       [[0, 0, z_start + upper_height.inch], [w, 0, z_start + upper_height.inch],
+                        [w, d, z_start + upper_height.inch], [0, d, z_start + upper_height.inch]],
+                       t, :down)
+              
+              current_z += upper_height.inch + r
+            end
+            
+          rescue => e
+            puts "Error building wall stack: #{e.message}"
             puts e.backtrace.first(3).join("\n")
           end
         end

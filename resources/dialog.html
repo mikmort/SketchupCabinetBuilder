@@ -282,6 +282,7 @@
             <select id="cabinet_type">
                 <option value="base">Base Cabinet</option>
                 <option value="wall">Wall Cabinet</option>
+                <option value="wall_stack">Wall Stack (10-foot)</option>
                 <option value="island">Island</option>
                 <option value="tall">Tall/Pantry</option>
                 <option value="corner_base">Corner Base</option>
@@ -325,9 +326,16 @@
             <label for="door_drawer_config">Door/Drawer Configuration</label>
             <select id="door_drawer_config">
                 <option value="doors">Doors Only</option>
-                <option value="drawers">Drawers Only (3)</option>
-                <option value="drawer_bank_3">2 Drawers + Door</option>
-                <option value="drawer_bank_4">3 Drawers + Door</option>
+                <option value="1_drawer">1 Large Drawer</option>
+                <option value="2_drawers">2 Drawers (Equal)</option>
+                <option value="drawers">3 Drawers (Graduated)</option>
+                <option value="4_drawers">4 Drawers (Graduated)</option>
+                <option value="1_drawer+door">1 Drawer + Door</option>
+                <option value="2_drawers+door">2 Drawers + Door</option>
+                <option value="drawer_bank_3">3 Drawers (Small) + Door</option>
+                <option value="3_equal_drawers">3 Drawers (Equal)</option>
+                <option value="4_equal_drawers">4 Drawers (Equal)</option>
+                <option value="5_drawers">5 Drawers (Graduated)</option>
                 <option value="custom">Custom</option>
             </select>
             <input type="text" id="config_custom" style="display:none;" placeholder='e.g., "2 drawers + door"'>

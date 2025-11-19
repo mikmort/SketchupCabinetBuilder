@@ -98,9 +98,6 @@ module MikMort
           # Move new cabinet into run
           move_to_group(new_cabinet_group, run_group)
           
-          # Adjust positioning for proper spacing
-          adjust_cabinet_spacing(run_group)
-          
           # Create or update continuous countertop
           update_run_countertop(run_group)
           
@@ -300,31 +297,60 @@ module MikMort
       
       # Move entity to a group while preserving transformation
       def move_to_group(entity, target_group)
-        # Get absolute transformation
+        return entity unless entity.is_a?(Sketchup::Group)
+        
+        # Get the entity's current transformation
         transformation = entity.transformation
         
-        # Remove from current parent and add to target
-        entities_collection = entity.parent.entities
-        new_entity = target_group.entities.add_instance(entity.definition, transformation)
+        # Create new group in target
+        new_group = target_group.entities.add_group
+        new_group.name = entity.name
         
-        # If entity is a group, we need to handle it differently
-        if entity.is_a?(Sketchup::Group)
-          # Create new group in target with same contents
-          new_group = target_group.entities.add_group
-          new_group.name = entity.name
-          new_group.transformation = transformation
-          
-          # Copy entities
-          entity.entities.each do |e|
-            new_group.entities.add_instance(e.definition, e.transformation) if e.respond_to?(:definition)
+        # Copy all entities from source to new group
+        entity.entities.to_a.each do |e|
+          begin
+            # Copy the entity
+            if e.is_a?(Sketchup::Group)
+              copy_group_recursive(e, new_group.entities)
+            elsif e.is_a?(Sketchup::Face)
+              # Copy face
+              new_face = new_group.entities.add_face(e.vertices.map(&:position))
+              new_face.material = e.material if e.material
+              new_face.back_material = e.back_material if e.back_material
+            elsif e.is_a?(Sketchup::Edge)
+              # Edges are created with faces, skip standalone edges
+            end
+          rescue => err
+            puts "Warning: Could not copy entity: #{err.message}"
           end
-          
-          entity.erase!
-          return new_group
         end
         
+        # Apply transformation to new group
+        new_group.transformation = transformation
+        
+        # Remove original
         entity.erase!
-        new_entity
+        
+        new_group
+      end
+      
+      # Recursively copy a group and its contents
+      def copy_group_recursive(source_group, target_entities)
+        new_group = target_entities.add_group
+        new_group.name = source_group.name
+        new_group.transformation = source_group.transformation
+        
+        source_group.entities.to_a.each do |e|
+          if e.is_a?(Sketchup::Group)
+            copy_group_recursive(e, new_group.entities)
+          elsif e.is_a?(Sketchup::Face)
+            new_face = new_group.entities.add_face(e.vertices.map(&:position))
+            new_face.material = e.material if e.material
+            new_face.back_material = e.back_material if e.back_material
+          end
+        end
+        
+        new_group
       end
       
       # Adjust spacing between cabinets in a run

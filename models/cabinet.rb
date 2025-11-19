@@ -119,6 +119,10 @@ module MikMort
           @width = 24.0
           @depth = Constants::WALL_CABINET[:depth]
           @height = Constants::WALL_CABINET[:height_standard]
+        when :wall_stack
+          @width = 24.0
+          @depth = Constants::WALL_STACK[:depth]
+          @height = Constants::WALL_STACK[:total_height]
         when :island
           @width = 36.0
           @depth = Constants::ISLAND_CABINET[:depth]
@@ -161,10 +165,26 @@ module MikMort
         case config
         when :doors
           [{type: :door, ratio: 1.0, count: 2}] # Two doors by default
-        when :drawers
-          [{type: :drawer, ratio: 1.0, count: 3}] # Three drawers
-        when :drawer_bank_3
+        when :'1_drawer'
+          [{type: :drawer, ratio: 1.0, count: 1}] # Single large drawer
+        when :'2_drawers'
+          [{type: :drawer, ratio: 1.0, count: 2}] # Two equal drawers
+        when :drawers, :'3_drawers'
+          [{type: :drawer, ratio: 1.0, count: 3}] # Three graduated drawers
+        when :'4_drawers'
+          [{type: :drawer, ratio: 1.0, count: 4}] # Four graduated drawers
+        when :'5_drawers'
+          [{type: :drawer, ratio: 1.0, count: 5}] # Five graduated drawers
+        when :'3_equal_drawers'
+          [{type: :drawer, ratio: 1.0, count: 3}] # Three equal drawers (will be handled separately)
+        when :'4_equal_drawers'
+          [{type: :drawer, ratio: 1.0, count: 4}] # Four equal drawers
+        when :'1_drawer+door'
+          [{type: :drawer, ratio: 0.3, count: 1}, {type: :door, ratio: 0.7, count: 1}]
+        when :'2_drawers+door'
           [{type: :drawer, ratio: 0.4, count: 2}, {type: :door, ratio: 0.6, count: 1}]
+        when :drawer_bank_3
+          [{type: :drawer, ratio: 0.45, count: 3}, {type: :door, ratio: 0.55, count: 1}]
         when :drawer_bank_4
           [{type: :drawer, ratio: 0.45, count: 3}, {type: :door, ratio: 0.55, count: 1}]
         else
