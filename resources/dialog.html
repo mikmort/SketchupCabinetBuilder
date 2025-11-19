@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cabinet Builder</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            font-size: 13px;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 18px;
+            font-weight: 600;
+        }
+        
+        .section {
+            margin-bottom: 24px;
+            padding-bottom: 24px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .section:last-child {
+            border-bottom: none;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 6px;
+            color: #555;
+            font-weight: 500;
+            font-size: 12px;
+        }
+        
+        input[type="text"],
+        input[type="number"],
+        select,
+        textarea {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 13px;
+            font-family: inherit;
+            margin-bottom: 12px;
+        }
+        
+        input[type="text"]:focus,
+        input[type="number"]:focus,
+        select:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #0078d4;
+            box-shadow: 0 0 0 3px rgba(0, 120, 212, 0.1);
+        }
+        
+        .checkbox-group {
+            margin-bottom: 12px;
+        }
+        
+        .checkbox-group input[type="checkbox"] {
+            margin-right: 8px;
+        }
+        
+        .checkbox-group label {
+            display: inline;
+            font-weight: normal;
+        }
+        
+        .radio-group {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 12px;
+        }
+        
+        .radio-group label {
+            display: flex;
+            align-items: center;
+            font-weight: normal;
+        }
+        
+        .radio-group input[type="radio"] {
+            margin-right: 6px;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 24px;
+        }
+        
+        button {
+            flex: 1;
+            padding: 10px 16px;
+            border: none;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .btn-primary {
+            background-color: #0078d4;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background-color: #006cbe;
+        }
+        
+        .btn-secondary {
+            background-color: #e0e0e0;
+            color: #333;
+        }
+        
+        .btn-secondary:hover {
+            background-color: #d0d0d0;
+        }
+        
+        .inline-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        
+        .inline-group-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+        }
+        
+        .help-text {
+            font-size: 11px;
+            color: #666;
+            margin-top: -8px;
+            margin-bottom: 12px;
+        }
+        
+        .preset-buttons {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        
+        .preset-btn {
+            flex: 1;
+            padding: 6px 12px;
+            border: 1px solid #ccc;
+            background: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        .preset-btn.active {
+            background-color: #0078d4;
+            color: white;
+            border-color: #0078d4;
+        }
+        
+        #appliance_gaps_container {
+            margin-top: 12px;
+        }
+        
+        .appliance-gap-item {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 8px;
+            padding: 8px;
+            background: #f9f9f9;
+            border-radius: 4px;
+        }
+        
+        .appliance-gap-item input {
+            margin-bottom: 0;
+        }
+        
+        .appliance-gap-item button {
+            padding: 4px 8px;
+            font-size: 11px;
+            background: #d32f2f;
+            color: white;
+        }
+        
+        .add-gap-btn {
+            padding: 6px 12px;
+            font-size: 12px;
+            background: #4caf50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Cabinet Builder</h2>
+        
+        <!-- Room Information -->
+        <div class="section">
+            <label for="room_name">Room Name</label>
+            <input type="text" id="room_name" placeholder="e.g., Kitchen, Master Bath" value="Kitchen">
+            <p class="help-text">Used for material naming in TwinMotion</p>
+            
+            <label>Room Preset</label>
+            <div class="preset-buttons">
+                <button type="button" class="preset-btn active" data-preset="kitchen">Kitchen</button>
+                <button type="button" class="preset-btn" data-preset="bathroom">Bathroom</button>
+                <button type="button" class="preset-btn" data-preset="closet">Closet</button>
+            </div>
+            <input type="hidden" id="room_preset" value="kitchen">
+        </div>
+        
+        <!-- Build Mode -->
+        <div class="section">
+            <label>Build Mode</label>
+            <div class="radio-group">
+                <label>
+                    <input type="radio" name="build_mode" value="single" checked>
+                    Single Cabinet
+                </label>
+                <label>
+                    <input type="radio" name="build_mode" value="run">
+                    Cabinet Run
+                </label>
+            </div>
+        </div>
+        
+        <!-- Single Cabinet Options -->
+        <div id="single_cabinet_options" class="section">
+            <label for="cabinet_type">Cabinet Type</label>
+            <select id="cabinet_type">
+                <option value="base">Base Cabinet</option>
+                <option value="wall">Wall Cabinet</option>
+                <option value="island">Island</option>
+                <option value="tall">Tall/Pantry</option>
+                <option value="corner_base">Corner Base</option>
+                <option value="corner_wall">Corner Wall</option>
+                <option value="floating">Floating</option>
+            </select>
+            
+            <label for="frame_type">Frame Type</label>
+            <select id="frame_type">
+                <option value="frameless">Frameless</option>
+                <option value="framed">Framed</option>
+            </select>
+            
+            <div class="inline-group-3">
+                <div>
+                    <label for="width">Width (in)</label>
+                    <select id="width">
+                        <option value="9">9"</option>
+                        <option value="12">12"</option>
+                        <option value="15">15"</option>
+                        <option value="18">18"</option>
+                        <option value="24" selected>24"</option>
+                        <option value="30">30"</option>
+                        <option value="36">36"</option>
+                        <option value="42">42"</option>
+                        <option value="48">48"</option>
+                        <option value="custom">Custom</option>
+                    </select>
+                    <input type="number" id="width_custom" style="display:none;" placeholder="Width">
+                </div>
+                <div>
+                    <label for="depth">Depth (in)</label>
+                    <input type="number" id="depth" value="24" step="0.5">
+                </div>
+                <div>
+                    <label for="height">Height (in)</label>
+                    <input type="number" id="height" value="34.5" step="0.5">
+                </div>
+            </div>
+            
+            <label for="door_drawer_config">Door/Drawer Configuration</label>
+            <select id="door_drawer_config">
+                <option value="doors">Doors Only</option>
+                <option value="drawers">Drawers Only (3)</option>
+                <option value="drawer_bank_3">2 Drawers + Door</option>
+                <option value="drawer_bank_4">3 Drawers + Door</option>
+                <option value="custom">Custom</option>
+            </select>
+            <input type="text" id="config_custom" style="display:none;" placeholder='e.g., "2 drawers + door"'>
+            
+            <div class="checkbox-group">
+                <input type="checkbox" id="has_countertop" checked>
+                <label for="has_countertop">Include Countertop</label>
+            </div>
+            
+            <div class="checkbox-group">
+                <input type="checkbox" id="has_backsplash" checked>
+                <label for="has_backsplash">Include Backsplash</label>
+            </div>
+            
+            <!-- Corner Cabinet Options -->
+            <div id="corner_options" style="display:none;">
+                <label for="corner_type">Corner Type</label>
+                <select id="corner_type">
+                    <option value="blind">Blind Corner</option>
+                    <option value="lazy_susan">Lazy Susan</option>
+                </select>
+            </div>
+            
+            <!-- Island Options -->
+            <div id="island_options" style="display:none;">
+                <div class="checkbox-group">
+                    <input type="checkbox" id="has_seating_side">
+                    <label for="has_seating_side">Include Seating Overhang</label>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Cabinet Run Options -->
+        <div id="cabinet_run_options" class="section" style="display:none;">
+            <label for="run_length">Total Run Length (in)</label>
+            <input type="number" id="run_length" value="120" step="1">
+            <p class="help-text">Total length available for cabinets</p>
+            
+            <label for="run_cabinet_type">Cabinet Type</label>
+            <select id="run_cabinet_type">
+                <option value="base">Base Cabinets</option>
+                <option value="wall">Wall Cabinets</option>
+            </select>
+            
+            <label for="run_frame_type">Frame Type</label>
+            <select id="run_frame_type">
+                <option value="frameless">Frameless</option>
+                <option value="framed">Framed</option>
+            </select>
+            
+            <div class="checkbox-group">
+                <input type="checkbox" id="run_has_countertop" checked>
+                <label for="run_has_countertop">Include Countertop</label>
+            </div>
+            
+            <div class="checkbox-group">
+                <input type="checkbox" id="run_has_backsplash" checked>
+                <label for="run_has_backsplash">Include Backsplash</label>
+            </div>
+            
+            <label>Appliance Gaps</label>
+            <p class="help-text">Add spaces for ranges, dishwashers, etc.</p>
+            <div id="appliance_gaps_container"></div>
+            <button type="button" class="add-gap-btn" onclick="addApplianceGap()">+ Add Appliance Gap</button>
+        </div>
+        
+        <!-- Buttons -->
+        <div class="button-group">
+            <button type="button" class="btn-secondary" onclick="cancel()">Cancel</button>
+            <button type="button" class="btn-primary" onclick="createCabinet()">Create Cabinet</button>
+        </div>
+    </div>
+    
+    <script>
+        let applianceGapCount = 0;
+        
+        // Preset button handling
+        document.querySelectorAll('.preset-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                document.getElementById('room_preset').value = this.dataset.preset;
+                applyRoomPreset(this.dataset.preset);
+            });
+        });
+        
+        // Build mode toggle
+        document.querySelectorAll('input[name="build_mode"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                if (this.value === 'single') {
+                    document.getElementById('single_cabinet_options').style.display = 'block';
+                    document.getElementById('cabinet_run_options').style.display = 'none';
+                } else {
+                    document.getElementById('single_cabinet_options').style.display = 'none';
+                    document.getElementById('cabinet_run_options').style.display = 'block';
+                }
+            });
+        });
+        
+        // Cabinet type changes
+        document.getElementById('cabinet_type').addEventListener('change', function() {
+            const isCorner = this.value === 'corner_base' || this.value === 'corner_wall';
+            const isIsland = this.value === 'island';
+            
+            document.getElementById('corner_options').style.display = isCorner ? 'block' : 'none';
+            document.getElementById('island_options').style.display = isIsland ? 'block' : 'none';
+            
+            // Update default dimensions based on type
+            updateDefaultDimensions(this.value);
+        });
+        
+        // Width selector
+        document.getElementById('width').addEventListener('change', function() {
+            if (this.value === 'custom') {
+                document.getElementById('width_custom').style.display = 'block';
+            } else {
+                document.getElementById('width_custom').style.display = 'none';
+            }
+        });
+        
+        // Door/drawer config
+        document.getElementById('door_drawer_config').addEventListener('change', function() {
+            if (this.value === 'custom') {
+                document.getElementById('config_custom').style.display = 'block';
+            } else {
+                document.getElementById('config_custom').style.display = 'none';
+            }
+        });
+        
+        // Apply room preset dimensions
+        function applyRoomPreset(preset) {
+            const cabinetType = document.getElementById('cabinet_type').value;
+            
+            if (preset === 'kitchen') {
+                if (cabinetType === 'base') {
+                    document.getElementById('depth').value = 24;
+                } else if (cabinetType === 'wall') {
+                    document.getElementById('depth').value = 12;
+                    document.getElementById('height').value = 36;
+                }
+            } else if (preset === 'bathroom') {
+                if (cabinetType === 'base') {
+                    document.getElementById('depth').value = 21;
+                } else if (cabinetType === 'wall') {
+                    document.getElementById('depth').value = 12;
+                    document.getElementById('height').value = 30;
+                }
+            } else if (preset === 'closet') {
+                if (cabinetType === 'base') {
+                    document.getElementById('depth').value = 24;
+                } else if (cabinetType === 'wall') {
+                    document.getElementById('depth').value = 14;
+                    document.getElementById('height').value = 42;
+                }
+            }
+        }
+        
+        // Update default dimensions based on cabinet type
+        function updateDefaultDimensions(type) {
+            switch(type) {
+                case 'base':
+                    document.getElementById('depth').value = 24;
+                    document.getElementById('height').value = 34.5;
+                    break;
+                case 'wall':
+                    document.getElementById('depth').value = 12;
+                    document.getElementById('height').value = 36;
+                    break;
+                case 'island':
+                    document.getElementById('depth').value = 36;
+                    document.getElementById('height').value = 34.5;
+                    break;
+                case 'tall':
+                    document.getElementById('depth').value = 24;
+                    document.getElementById('height').value = 84;
+                    break;
+                case 'corner_base':
+                case 'corner_wall':
+                    document.getElementById('width').value = '42';
+                    document.getElementById('depth').value = 42;
+                    break;
+                case 'floating':
+                    document.getElementById('depth').value = 12;
+                    document.getElementById('height').value = 36;
+                    break;
+            }
+        }
+        
+        // Add appliance gap
+        function addApplianceGap() {
+            applianceGapCount++;
+            const container = document.getElementById('appliance_gaps_container');
+            const div = document.createElement('div');
+            div.className = 'appliance-gap-item';
+            div.innerHTML = `
+                <input type="number" placeholder="Position (in)" data-gap-id="${applianceGapCount}" data-gap-field="position" style="flex:1">
+                <input type="number" placeholder="Width (in)" data-gap-id="${applianceGapCount}" data-gap-field="width" style="flex:1">
+                <input type="text" placeholder="Label" data-gap-id="${applianceGapCount}" data-gap-field="label" style="flex:1">
+                <button onclick="removeApplianceGap(this)">Remove</button>
+            `;
+            container.appendChild(div);
+        }
+        
+        // Remove appliance gap
+        function removeApplianceGap(btn) {
+            btn.parentElement.remove();
+        }
+        
+        // Create cabinet
+        function createCabinet() {
+            const buildMode = document.querySelector('input[name="build_mode"]:checked').value;
+            const data = {
+                room_name: document.getElementById('room_name').value,
+                room_preset: document.getElementById('room_preset').value,
+                build_mode: buildMode
+            };
+            
+            if (buildMode === 'single') {
+                // Get width
+                let width = document.getElementById('width').value;
+                if (width === 'custom') {
+                    width = document.getElementById('width_custom').value;
+                }
+                
+                // Get config
+                let config = document.getElementById('door_drawer_config').value;
+                if (config === 'custom') {
+                    config = document.getElementById('config_custom').value;
+                }
+                
+                data.cabinet = {
+                    type: document.getElementById('cabinet_type').value,
+                    frame_type: document.getElementById('frame_type').value,
+                    width: parseFloat(width),
+                    depth: parseFloat(document.getElementById('depth').value),
+                    height: parseFloat(document.getElementById('height').value),
+                    door_drawer_config: config,
+                    has_countertop: document.getElementById('has_countertop').checked,
+                    has_backsplash: document.getElementById('has_backsplash').checked,
+                    corner_type: document.getElementById('corner_type').value,
+                    has_seating_side: document.getElementById('has_seating_side').checked
+                };
+            } else {
+                // Cabinet run
+                const applianceGaps = [];
+                document.querySelectorAll('#appliance_gaps_container .appliance-gap-item').forEach(item => {
+                    const inputs = item.querySelectorAll('input');
+                    if (inputs.length >= 3 && inputs[0].value && inputs[1].value) {
+                        applianceGaps.push({
+                            position: parseFloat(inputs[0].value),
+                            width: parseFloat(inputs[1].value),
+                            label: inputs[2].value || 'Appliance'
+                        });
+                    }
+                });
+                
+                data.cabinet_run = {
+                    total_length: parseFloat(document.getElementById('run_length').value),
+                    cabinet_type: document.getElementById('run_cabinet_type').value,
+                    frame_type: document.getElementById('run_frame_type').value,
+                    has_countertop: document.getElementById('run_has_countertop').checked,
+                    has_backsplash: document.getElementById('run_has_backsplash').checked,
+                    appliance_gaps: applianceGaps
+                };
+            }
+            
+            // Send to Ruby
+            window.location = 'skp:create_cabinet@' + JSON.stringify(data);
+        }
+        
+        // Cancel
+        function cancel() {
+            window.location = 'skp:cancel@';
+        }
+    </script>
+</body>
+</html>
