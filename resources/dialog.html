@@ -144,6 +144,13 @@
             gap: 10px;
         }
         
+        .inline-group-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+        
         .inline-group-3 {
             display: grid;
             grid-template-columns: 1fr 1fr 1fr;
@@ -324,22 +331,57 @@
                 </div>
             </div>
             
-            <label for="door_drawer_config">Door/Drawer Configuration</label>
-            <select id="door_drawer_config">
-                <option value="doors">Doors Only</option>
-                <option value="1_drawer">1 Large Drawer</option>
-                <option value="2_drawers">2 Drawers (Equal)</option>
-                <option value="drawers">3 Drawers (Graduated)</option>
-                <option value="4_drawers">4 Drawers (Graduated)</option>
-                <option value="1_drawer+door">1 Drawer + Door</option>
-                <option value="2_drawers+door">2 Drawers + Door</option>
-                <option value="drawer_bank_3">3 Drawers (Small) + Door</option>
-                <option value="3_equal_drawers">3 Drawers (Equal)</option>
-                <option value="4_equal_drawers">4 Drawers (Equal)</option>
-                <option value="5_drawers">5 Drawers (Graduated)</option>
-                <option value="custom">Custom</option>
-            </select>
-            <input type="text" id="config_custom" style="display:none;" placeholder='e.g., "2 drawers + door"'>
+            <label>Cabinet Configuration</label>
+            
+            <div class="inline-group-2">
+                <div>
+                    <label for="door_count">Doors</label>
+                    <select id="door_count">
+                        <option value="0">No Doors</option>
+                        <option value="1" selected>1 Door</option>
+                        <option value="2">2 Doors</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="drawer_count">Drawers</label>
+                    <select id="drawer_count">
+                        <option value="0" selected>No Drawers</option>
+                        <option value="1">1 Drawer</option>
+                        <option value="2">2 Drawers</option>
+                        <option value="3">3 Drawers</option>
+                        <option value="4">4 Drawers</option>
+                        <option value="5">5 Drawers</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div id="drawer_sizing_options" style="display:none;">
+                <label for="drawer_sizing">Drawer Sizing</label>
+                <div class="radio-group">
+                    <label>
+                        <input type="radio" name="drawer_sizing" value="equal" checked>
+                        Equal Height
+                    </label>
+                    <label>
+                        <input type="radio" name="drawer_sizing" value="graduated">
+                        Graduated (Small to Large)
+                    </label>
+                </div>
+            </div>
+            
+            <div id="layout_options" style="display:none; margin-top: 12px;">
+                <label for="layout_order">Layout</label>
+                <div class="radio-group">
+                    <label>
+                        <input type="radio" name="layout_order" value="drawers_top" checked>
+                        Drawers on Top
+                    </label>
+                    <label>
+                        <input type="radio" name="layout_order" value="doors_top">
+                        Doors on Top
+                    </label>
+                </div>
+            </div>
             
             <div class="checkbox-group">
                 <input type="checkbox" id="has_countertop" checked>
@@ -482,6 +524,27 @@
             });
         });
         
+        // Drawer count change - show/hide sizing and layout options
+        document.getElementById('drawer_count').addEventListener('change', function() {
+            const drawerCount = parseInt(this.value);
+            const doorCount = parseInt(document.getElementById('door_count').value);
+            
+            // Show drawer sizing options if drawers selected
+            document.getElementById('drawer_sizing_options').style.display = drawerCount > 0 ? 'block' : 'none';
+            
+            // Show layout options if both doors and drawers selected
+            document.getElementById('layout_options').style.display = (drawerCount > 0 && doorCount > 0) ? 'block' : 'none';
+        });
+        
+        // Door count change - show/hide layout options
+        document.getElementById('door_count').addEventListener('change', function() {
+            const doorCount = parseInt(this.value);
+            const drawerCount = parseInt(document.getElementById('drawer_count').value);
+            
+            // Show layout options if both doors and drawers selected
+            document.getElementById('layout_options').style.display = (drawerCount > 0 && doorCount > 0) ? 'block' : 'none';
+        });
+        
         // Cabinet type changes
         document.getElementById('cabinet_type').addEventListener('change', function() {
             const isCorner = this.value === 'corner_base' || this.value === 'corner_wall';
@@ -500,15 +563,6 @@
                 document.getElementById('width_custom').style.display = 'block';
             } else {
                 document.getElementById('width_custom').style.display = 'none';
-            }
-        });
-        
-        // Door/drawer config
-        document.getElementById('door_drawer_config').addEventListener('change', function() {
-            if (this.value === 'custom') {
-                document.getElementById('config_custom').style.display = 'block';
-            } else {
-                document.getElementById('config_custom').style.display = 'none';
             }
         });
         
@@ -619,10 +673,32 @@
                     width = document.getElementById('width_custom').value;
                 }
                 
-                // Get config
-                let config = document.getElementById('door_drawer_config').value;
-                if (config === 'custom') {
-                    config = document.getElementById('config_custom').value;
+                // Build door/drawer configuration from separate controls
+                const doorCount = parseInt(document.getElementById('door_count').value);
+                const drawerCount = parseInt(document.getElementById('drawer_count').value);
+                const drawerSizing = document.querySelector('input[name="drawer_sizing"]:checked')?.value || 'equal';
+                const layoutOrder = document.querySelector('input[name="layout_order"]:checked')?.value || 'drawers_top';
+                
+                // Create config string
+                let config;
+                if (doorCount === 0 && drawerCount === 0) {
+                    config = 'doors';  // Default to doors
+                } else if (doorCount > 0 && drawerCount === 0) {
+                    config = 'doors';
+                } else if (doorCount === 0 && drawerCount > 0) {
+                    // Drawers only
+                    if (drawerSizing === 'equal') {
+                        config = `${drawerCount}_equal_drawers`;
+                    } else {
+                        config = drawerCount === 3 ? 'drawers' : `${drawerCount}_drawers`;
+                    }
+                } else {
+                    // Both doors and drawers
+                    if (layoutOrder === 'drawers_top') {
+                        config = `${drawerCount}_drawers+door`;
+                    } else {
+                        config = `door+${drawerCount}_drawers`;
+                    }
                 }
                 
                 data.cabinet = {
@@ -632,6 +708,10 @@
                     depth: parseFloat(document.getElementById('depth').value),
                     height: parseFloat(document.getElementById('height').value),
                     door_drawer_config: config,
+                    door_count: doorCount,
+                    drawer_count: drawerCount,
+                    drawer_sizing: drawerSizing,
+                    layout_order: layoutOrder,
                     has_countertop: document.getElementById('has_countertop').checked,
                     has_backsplash: document.getElementById('has_backsplash').checked,
                     corner_type: document.getElementById('corner_type').value,

@@ -155,11 +155,12 @@ module MikMort
         
         if rightmost
           # Place to the right of rightmost cabinet with no gap
-          x = rightmost_x  # This is already the right edge in inches
+          # Round to avoid floating point precision issues
+          x = rightmost_x.round(6)  # Round to 6 decimal places (sub-micron precision)
           # Use the original cabinet's Y position (depth), not the previous cabinet's
           # This prevents forward drift from countertop overhang
           y = cabinet.position[1]
-          z = rightmost.bounds.min.z / 1.inch
+          z = (rightmost.bounds.min.z / 1.inch).round(6)
           puts "DEBUG auto_position: Positioning next cabinet at: [#{x.round(4)}, #{y}, #{z}]\""
           [x, y, z]
         else

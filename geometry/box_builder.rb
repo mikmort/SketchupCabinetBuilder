@@ -56,34 +56,44 @@ module MikMort
             h = height.inch
             t = thickness.inch
             
+            # Determine if this cabinet needs toe kick elevation
+            has_toe_kick = (cabinet.type == :base || cabinet.type == :island)
+            kick_height = has_toe_kick ? Constants::BASE_CABINET[:toe_kick_height].inch : 0
+            kick_depth = has_toe_kick ? Constants::BASE_CABINET[:toe_kick_depth].inch : 0
+            total_height = kick_height + h
+            
             # Create all panels
             back_thickness = (thickness * 0.5).inch
             
-            # Bottom panel (full width and depth at z=0)
-            pts = [[0, 0, 0], [w, 0, 0], [w, d, 0], [0, d, 0]]
+            # Bottom panel (elevated by kick_height, full depth from front to back)
+            pts = [[0, 0, kick_height], [w, 0, kick_height], [w, d, kick_height], [0, d, kick_height]]
             create_simple_box(entities, pts, t, @materials.box_material)
             
-            # Left side panel (sits on bottom)
-            pts = [[0, 0, 0], [t, 0, 0], [t, d, 0], [0, d, 0]]
-            create_simple_box(entities, pts, h, @materials.box_material)
+            # Left/right side panels (with toe kick notch when needed)
+            if has_toe_kick
+              create_toe_kick_side_panel(entities, :left, w, d, t, total_height, kick_height, kick_depth, @materials.box_material)
+              create_toe_kick_side_panel(entities, :right, w, d, t, total_height, kick_height, kick_depth, @materials.box_material)
+            else
+              pts = [[0, 0, 0], [t, 0, 0], [t, d, 0], [0, d, 0]]
+              create_simple_box(entities, pts, h, @materials.box_material)
+              pts = [[w - t, 0, 0], [w, 0, 0], [w, d, 0], [w - t, d, 0]]
+              create_simple_box(entities, pts, h, @materials.box_material)
+            end
             
-            # Right side panel (sits on bottom)
-            pts = [[w - t, 0, 0], [w, 0, 0], [w, d, 0], [w - t, d, 0]]
-            create_simple_box(entities, pts, h, @materials.box_material)
-            
-            # Back panel (slightly thinner, sits on bottom between sides)
-            pts = [[t, d - back_thickness, 0], [w - t, d - back_thickness, 0], [w - t, d, 0], [t, d, 0]]
+            # Back panel (slightly thinner, elevated by kick_height, full width for frameless)
+            pts = [[0, d - back_thickness, kick_height], [w, d - back_thickness, kick_height], [w, d, kick_height], [0, d, kick_height]]
             create_simple_box(entities, pts, h, @materials.box_material)
             
             # Create top panel (for wall cabinets and tall cabinets)
             if cabinet.type == :wall || cabinet.type == :tall || cabinet.type == :floating
-              pts = [[0, 0, h], [w, 0, h], [w, d, h], [0, d, h]]
+              top_z = kick_height + h
+              pts = [[0, 0, top_z], [w, 0, top_z], [w, d, top_z], [0, d, top_z]]
               create_simple_box(entities, pts, t, @materials.box_material)
             end
             
             # Create interior shelves (one adjustable shelf for now)
             if height > 24.inch
-              shelf_height = (height / 2.0)
+              shelf_height = kick_height + (height / 2.0)
               pts = [[t, 0, shelf_height], [w - t, 0, shelf_height], [w - t, d - back_thickness, shelf_height], [t, d - back_thickness, shelf_height]]
               create_simple_box(entities, pts, t, @materials.interior_material)
             end
@@ -256,56 +266,40 @@ module MikMort
           end
         end
         
-        # Add toe kick recess
+        # Create a side panel with a toe kick notch removed at the front bottom
+        def create_toe_kick_side_panel(entities, side, width, depth, thickness, total_height, kick_height, kick_depth, material)
+          plane_x = side == :left ? 0 : (width - thickness)
+          extrude = side == :left ? thickness : thickness
+          top_z = total_height
+          
+          pts = [
+            [plane_x, kick_depth, 0],
+            [plane_x, depth, 0],
+            [plane_x, depth, top_z],
+            [plane_x, 0, top_z],
+            [plane_x, 0, kick_height],
+            [plane_x, kick_depth, kick_height]
+          ]
+          
+          create_simple_box(entities, pts, extrude, material)
+        end
+        
+        # Add toe kick components (recessed face only)
         def add_toe_kick(entities, width, depth)
           kick_height = Constants::BASE_CABINET[:toe_kick_height].inch
           kick_depth = Constants::BASE_CABINET[:toe_kick_depth].inch
           thickness = Constants::BASE_CABINET[:panel_thickness].inch
-          
           w = width.inch
           d = depth.inch
           
-          # Create toe kick back panel at the recess depth
-          # This creates the "back wall" of the toe kick recess
-          back_pts = [
+          # Front plate recessed by kick_depth
+          front_pts = [
             [0, kick_depth, 0],
             [w, kick_depth, 0],
             [w, kick_depth, kick_height],
             [0, kick_depth, kick_height]
           ]
-          
-          # Create back face of toe kick
-          back_face = entities.add_face(back_pts)
-          if back_face && back_face.valid?
-            back_face.material = @materials.box_material
-            back_face.back_material = @materials.box_material
-          end
-          
-          # Create left side panel connecting front to back
-          left_pts = [
-            [0, 0, 0],
-            [0, kick_depth, 0],
-            [0, kick_depth, kick_height],
-            [0, 0, kick_height]
-          ]
-          left_face = entities.add_face(left_pts)
-          if left_face && left_face.valid?
-            left_face.material = @materials.box_material
-            left_face.back_material = @materials.box_material
-          end
-          
-          # Create right side panel connecting front to back
-          right_pts = [
-            [w, 0, 0],
-            [w, 0, kick_height],
-            [w, kick_depth, kick_height],
-            [w, kick_depth, 0]
-          ]
-          right_face = entities.add_face(right_pts)
-          if right_face && right_face.valid?
-            right_face.material = @materials.box_material
-            right_face.back_material = @materials.box_material
-          end
+          create_simple_box(entities, front_pts, -thickness, @materials.door_face_material)
         end
         
         # Build SubZero refrigerator enclosure

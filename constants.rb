@@ -136,17 +136,19 @@ module MikMort
       
       # Countertop Standards
       COUNTERTOP = {
-        depth: 25.5,          # 1.5" overhang beyond base cabinet
+        depth: 25.5,          # Legacy default depth (overrides when cabinet depth missing)
         thickness: 1.5,       # Standard countertop thickness
         backsplash_height: 4.0, # Standard backsplash
         overhang_front: 1.5,  # Front overhang
-        overhang_side: 0.75   # Side overhang (end caps)
+        overhang_side: 0.75,  # Side overhang (end caps)
+        overhang_back: 0.0    # Back scribe allowance (usually flush to wall)
       }.freeze
       
       # Door and Drawer Standards
       DOOR_DRAWER = {
         reveal: 0.125,        # 1/8" spacing between doors/drawers
         overlay: 0.375,       # 3/8" overlay for framed cabinets
+        frameless_overlay: 0.0625, # 1/16" past carcass for frameless coverage
         thickness: 0.75,      # Door/drawer front thickness
         hinge_width: 1.5,     # European hinge width
         hinge_height: 3.0,    # Hinge plate height

@@ -14,21 +14,20 @@ module MikMort
         
         # Build countertop for a single cabinet or cabinet run
         # @param cabinet [Cabinet, Array<Cabinet>] Single cabinet or array of cabinets
-        # @param parent_group [Sketchup::Group] Parent group
+        # @param parent_group [Sketchup::Group] Parent group (the Countertop group)
         # @param options [Hash] Additional options (seating_side, etc.)
         # @return [Sketchup::Group] The countertop group
         def build(cabinet, parent_group, options = {})
-          entities = parent_group.entities
-          countertop_group = entities.add_group
-          countertop_group.name = "Countertop"
+          # parent_group is already the "Countertop" group
+          # Build directly in it and create backsplash subgroup if needed
           
           if cabinet.is_a?(Array)
-            build_continuous_countertop(cabinet, countertop_group, options)
+            build_continuous_countertop(cabinet, parent_group, options)
           else
-            build_single_countertop(cabinet, countertop_group, options)
+            build_single_countertop(cabinet, parent_group, options)
           end
           
-          countertop_group
+          parent_group
         end
         
         private
@@ -37,11 +36,16 @@ module MikMort
         def build_single_countertop(cabinet, countertop_group, options)
           entities = countertop_group.entities
           
+          front_overhang = countertop_overhang(:overhang_front)
+          side_overhang = options[:add_side_overhang] ? countertop_overhang(:overhang_side) : 0
+          back_overhang = countertop_overhang(:overhang_back)
+          base_depth = cabinet_depth_value(cabinet)
+
           # Calculate dimensions
-          width = cabinet.width + (2 * Constants::COUNTERTOP[:overhang_side])
-          depth = Constants::COUNTERTOP[:depth]
+          width = cabinet.width + (2 * side_overhang)
+          depth = base_depth + front_overhang + back_overhang
           thickness = Constants::COUNTERTOP[:thickness]
-          cabinet_height = cabinet.height  # Total height, not interior
+          cabinet_height = cabinet.height || Constants::BASE_CABINET[:height]  # Total height, not interior
           
           # Adjust for island with seating
           if cabinet.type == :island && cabinet.has_seating_side
@@ -56,24 +60,24 @@ module MikMort
           h = cabinet_height.inch
           
           # Starting position (account for side overhang)
-          start_x = -Constants::COUNTERTOP[:overhang_side].inch
-          start_y = -Constants::COUNTERTOP[:overhang_front].inch
-          # For base cabinets, box top is at interior_height, but total height includes toe kick
-          start_z = cabinet.interior_height.inch  # Sit on top of box (not including toe kick in z)
+          start_x = -side_overhang.inch
+          start_y = -front_overhang.inch
+          # Place countertop on top of full cabinet height (toe kick included)
+          start_z = cabinet_height.inch
           
-          # Create countertop slab
+          # Create countertop slab directly in countertop group
           create_countertop_slab(entities, start_x, start_y, start_z, w, d, t)
           
-          # Add backsplash if needed (as separate group)
+          # Add backsplash as subgroup if needed
           if cabinet.has_backsplash
             backsplash_height = Constants::COUNTERTOP[:backsplash_height].inch
             
             # Backsplash position (at back edge of countertop)
-            backsplash_y = start_y + d  # Full depth to back edge
+            backsplash_y = start_y + d - back_overhang.inch
             backsplash_z = start_z + t
             
-            # Create separate backsplash group at countertop level
-            backsplash_group = entities.add_group
+            # Create backsplash subgroup within countertop group
+            backsplash_group = countertop_group.entities.add_group
             backsplash_group.name = "Backsplash"
             create_backsplash(backsplash_group.entities, start_x, backsplash_y, backsplash_z, 
                             w, backsplash_height, t)
@@ -86,18 +90,22 @@ module MikMort
           
           entities = countertop_group.entities
           
+          front_overhang = countertop_overhang(:overhang_front)
+          side_overhang = countertop_overhang(:overhang_side)
+          back_overhang = countertop_overhang(:overhang_back)
+
           # Find the span of all cabinets
           min_x = cabinets.map { |c| c.position[0] }.min
           max_x = cabinets.map { |c| c.position[0] + c.width }.max
           
           # Use first cabinet as reference for height and depth
           ref_cabinet = cabinets.first
-          height = ref_cabinet.height
-          depth = Constants::COUNTERTOP[:depth]
+          height = cabinets.map(&:height).compact.max || ref_cabinet.height || Constants::BASE_CABINET[:height]
+          depth = cabinets_max_depth(cabinets) + front_overhang + back_overhang
           thickness = Constants::COUNTERTOP[:thickness]
           
           # Calculate total width
-          total_width = max_x - min_x + (2 * Constants::COUNTERTOP[:overhang_side])
+          total_width = max_x - min_x + (2 * side_overhang)
           
           # Convert to inches
           w = total_width.inch
@@ -106,22 +114,38 @@ module MikMort
           h = height.inch
           
           # Starting position
-          start_x = (min_x - Constants::COUNTERTOP[:overhang_side]).inch
-          start_y = -Constants::COUNTERTOP[:overhang_front].inch
+          start_x = (min_x - side_overhang).inch
+          start_y = -front_overhang.inch
           start_z = h
           
-          # Create countertop slab
+          # Create countertop slab directly in countertop group
           create_countertop_slab(entities, start_x, start_y, start_z, w, d, t)
           
-          # Add backsplash if any cabinet has one
+          # Add backsplash as subgroup if any cabinet has one
           if cabinets.any? { |c| c.has_backsplash }
             backsplash_height = Constants::COUNTERTOP[:backsplash_height].inch
-            backsplash_y = start_y + d - t
+            backsplash_y = start_y + d - back_overhang.inch
             backsplash_z = start_z + t
             
-            create_backsplash(entities, start_x, backsplash_y, backsplash_z,
+            # Create backsplash subgroup within countertop group
+            backsplash_group = countertop_group.entities.add_group
+            backsplash_group.name = "Backsplash"
+            create_backsplash(backsplash_group.entities, start_x, backsplash_y, backsplash_z,
                             w, backsplash_height, t)
           end
+        end
+
+        def countertop_overhang(key)
+          Constants::COUNTERTOP[key] || 0.0
+        end
+
+        def cabinet_depth_value(cabinet)
+          cabinet.depth || Constants::COUNTERTOP[:depth] || Constants::BASE_CABINET[:depth]
+        end
+
+        def cabinets_max_depth(cabinets)
+          depths = cabinets.map { |cab| cabinet_depth_value(cab) }
+          depths.compact.max || (Constants::COUNTERTOP[:depth] || Constants::BASE_CABINET[:depth])
         end
         
         # Create the main countertop slab

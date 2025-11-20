@@ -115,20 +115,33 @@ module MikMort
             run_group = @model.active_entities.add_group
             run_group.name = "Cabinet_Run_#{cabinet_run.total_length.to_i}in"
             
-            # Generate each cabinet in the run
+            # Create shared groups for the entire run
+            carcass_group = run_group.entities.add_group
+            carcass_group.name = "Carcass"
+            
+            countertop_group = run_group.entities.add_group
+            countertop_group.name = "Countertop"
+            
+            fronts_group = run_group.entities.add_group
+            fronts_group.name = "Fronts"
+            
+            hardware_group = run_group.entities.add_group
+            hardware_group.name = "Hardware"
+            
+            # Generate each cabinet in the run with shared groups
             cabinet_run.cabinets.each do |cabinet|
-              generate_cabinet_in_group(cabinet, run_group)
+              generate_cabinet_in_run_groups(cabinet, carcass_group, fronts_group, hardware_group)
             end
             
             # Add continuous countertop if any cabinets have countertops
             countertop_cabinets = cabinet_run.cabinets.select { |c| c.has_countertop }
             if countertop_cabinets.any?
-              @countertop_builder.build(countertop_cabinets, run_group)
+              @countertop_builder.build(countertop_cabinets, countertop_group)
             end
             
             # Add filler strips if any
             cabinet_run.filler_strips.each_with_index do |filler, index|
-              add_filler_strip(run_group, filler, index)
+              add_filler_strip(carcass_group, filler, index)
             end
             
             @model.commit_operation
@@ -142,7 +155,34 @@ module MikMort
         
         private
         
-        # Generate a cabinet within an existing group
+        # Generate a cabinet within run-level shared groups
+        def generate_cabinet_in_run_groups(cabinet, carcass_group, fronts_group, hardware_group)
+          return nil unless cabinet.valid?
+          
+          # Position transformation for this cabinet
+          x, y, z = cabinet.position
+          transformation = Geom::Transformation.new([x.inch, y.inch, z.inch])
+          
+          # Build cabinet components directly in shared groups with transformation
+          # Create a temporary group for the box, then explode it into carcass_group
+          temp_box = carcass_group.entities.add_group
+          @box_builder.build(cabinet, temp_box)
+          temp_box.transformation = transformation
+          temp_box.explode  # Merge geometry into parent carcass group
+          
+          # Create a temporary group for fronts, then explode it
+          temp_fronts = fronts_group.entities.add_group
+          temp_hardware = hardware_group.entities.add_group
+          @door_drawer_builder.build(cabinet, temp_fronts, temp_hardware)
+          temp_fronts.transformation = transformation
+          temp_hardware.transformation = transformation
+          temp_fronts.explode  # Merge geometry into parent fronts group
+          temp_hardware.explode  # Merge geometry into parent hardware group
+          
+          # Note: Countertop is added separately for the whole run
+        end
+        
+        # Generate a cabinet within an existing group (legacy method for individual cabinets)
         def generate_cabinet_in_group(cabinet, parent_group)
           return nil unless cabinet.valid?
           

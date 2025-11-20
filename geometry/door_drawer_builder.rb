@@ -21,7 +21,7 @@ module MikMort
           begin
             # Special handling for wall stack - create doors for each section
             if cabinet.type == :wall_stack || cabinet.type == :wall_stack_9ft
-              build_wall_stack_doors(cabinet)
+              build_wall_stack_doors(cabinet, fronts_group, hardware_group)
               return
             end
             
@@ -32,8 +32,9 @@ module MikMort
             
             # Account for frame if framed cabinet
             frame_offset = cabinet.frame_type == :framed ? Constants::FRAME[:width] : 0
-            
-            current_z = frame_offset
+
+            toe_kick_offset = toe_kick_base_offset(cabinet)
+            current_z = frame_offset + toe_kick_offset
             
             config_sections.each do |section|
               section_height = available_height * section[:ratio]
@@ -42,8 +43,7 @@ module MikMort
                 equal_sizing = section[:equal_sizing] || false
                 build_drawers(fronts_group, hardware_group, cabinet, section[:count], current_z, section_height, equal_sizing)
               else
-                # Determine door count based on cabinet width
-                door_count = (cabinet.width > 30) ? 2 : 1
+                door_count = door_count_for_section(cabinet, section[:count])
                 build_doors(fronts_group, hardware_group, cabinet, door_count, current_z, section_height)
               end
               
@@ -71,7 +71,7 @@ module MikMort
           stack_reveal = config[:stack_reveal].inch
           
           width = cabinet.width.inch
-          door_count = (cabinet.width > 30) ? 2 : 1
+          door_count = door_count_for_section(cabinet)
           
           current_z = 0
           
@@ -89,31 +89,42 @@ module MikMort
         
         # Build doors
         def build_doors(fronts_group, hardware_group, cabinet, door_count, start_z, total_height)
+          return if door_count.nil? || door_count <= 0
+          door_count = door_count.to_i
           reveal = Constants::DOOR_DRAWER[:reveal].inch
+          frameless_overlay = cabinet.frame_type == :frameless ? Constants::DOOR_DRAWER[:frameless_overlay].inch : 0
+          center_reveal = reveal
           thickness = Constants::DOOR_DRAWER[:thickness].inch
           overlay = cabinet.frame_type == :framed ? Constants::DOOR_DRAWER[:overlay].inch : 0
           
           width = cabinet.width.inch
           depth = cabinet.depth.inch
           
-          # For multiple doors, calculate width accounting for reveals
-          total_reveal_width = reveal * (door_count + 1)
-          door_width = (width - total_reveal_width) / door_count
+          # Available width adjustments based on frame type
+          if cabinet.frame_type == :frameless
+            width_available = width + (2 * frameless_overlay)
+            edge_start = -frameless_overlay
+          else
+            width_available = width - (2 * reveal)
+            edge_start = reveal
+          end
+          total_center_spacing = center_reveal * [door_count - 1, 0].max
+          door_width = (width_available - total_center_spacing) / door_count
           door_height = total_height.inch - (2 * reveal)
           
-          # Position doors in front of cabinet box
-          # For frameless: door is at y = -thickness (door thickness extends forward)
-          # For framed: door is at y = -thickness - overlay
+          # Position doors flush with cabinet box front
+          # Door face is at y = 0 (flush with cabinet front)
+          # Door thickness extends backward into cabinet (negative Y direction)
           door_z = start_z.inch + reveal
-          door_y = -thickness  # Door face starts at cabinet front and extends forward
+          door_y = 0  # Door face flush with cabinet front
           
           # Create each door in its own named group
           (0...door_count).each do |i|
-            door_x = reveal + (i * (door_width + reveal))
+            door_x = edge_start + (i * (door_width + center_reveal))
             
             # Create door group with descriptive name
             door_group = fronts_group.entities.add_group
-            door_name = door_count > 1 ? "Door #{i == 0 ? 'Left' : 'Right'}" : "Door"
+            door_name = door_count == 1 ? "Door" : "Door #{i + 1}"
             door_group.name = door_name
             
             # Create door panel in door group
@@ -123,14 +134,28 @@ module MikMort
                             @materials.door_face_material)
             
             # Add hardware to hardware group
+            handle_side = door_handle_side(i, door_count)
             add_door_handle(hardware_group.entities, door_x, door_y, door_z, 
-                           door_width, door_height, thickness, i == 0 ? :right : :left)
+                           door_width, door_height, thickness, handle_side)
           end
+        end
+
+        def door_handle_side(index, door_count)
+          return :right if door_count == 1
+          index.even? ? :right : :left
+        end
+
+        def door_count_for_section(cabinet, requested_count = nil)
+          return requested_count if requested_count && requested_count > 0
+          width = cabinet.width || Constants::STANDARD_WIDTHS.min
+          return 1 if width < 24
+          2
         end
         
         # Build drawers
         def build_drawers(fronts_group, hardware_group, cabinet, drawer_count, start_z, total_height, equal_sizing = false)
           reveal = Constants::DOOR_DRAWER[:reveal].inch
+          frameless_overlay = cabinet.frame_type == :frameless ? Constants::DOOR_DRAWER[:frameless_overlay].inch : 0
           thickness = Constants::DOOR_DRAWER[:thickness].inch
           overlay = cabinet.frame_type == :framed ? Constants::DOOR_DRAWER[:overlay].inch : 0
           
@@ -147,11 +172,16 @@ module MikMort
             # start_z and current_z are also in inches (as numbers)
             
             # Create drawer front directly in parent (NO sub-group)
-            drawer_x = reveal
-            drawer_y = -thickness - overlay
+            if cabinet.frame_type == :frameless
+              drawer_x = -frameless_overlay
+              drawer_width = width + (2 * frameless_overlay)
+            else
+              drawer_x = reveal
+              drawer_width = width - (2 * reveal)
+            end
+            drawer_y = 0  # Drawer face flush with cabinet front
             drawer_z = current_z.inch + reveal
             
-            drawer_width = width - (2 * reveal)
             # Subtract reveals from height (drawer_height is in inches as a number)
             actual_drawer_height = drawer_height.inch - (2 * reveal)
             
@@ -186,11 +216,16 @@ module MikMort
         def calculate_drawer_heights(count, total_height, equal_sizing = false)
           heights = []
           
-          # If equal sizing is requested, distribute evenly
+          puts "DEBUG: calculate_drawer_heights - count=#{count}, total_height=#{total_height}, equal_sizing=#{equal_sizing.inspect} (class: #{equal_sizing.class})"
+          
+          # Check equal_sizing flag FIRST
           if equal_sizing
+            # Equal distribution
+            puts "DEBUG: Using EQUAL sizing"
             heights = Array.new(count, total_height / count.to_f)
           else
-            # Use graduated sizing
+            # Use graduated sizing (smaller on top, larger on bottom)
+            puts "DEBUG: Using GRADUATED sizing"
             case count
             when 1
               heights = [total_height]
@@ -279,6 +314,17 @@ module MikMort
           rescue => e
             puts "Error creating door panel: #{e.message}"
             nil
+          end
+        end
+
+        def toe_kick_base_offset(cabinet)
+          case cabinet.type
+          when :base, :island, :corner_base
+            Constants::BASE_CABINET[:toe_kick_height].inch
+          when :miele_dishwasher
+            Constants::MIELE_DISHWASHER[:toe_kick_height].inch
+          else
+            0
           end
         end
         

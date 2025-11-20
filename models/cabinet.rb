@@ -78,14 +78,11 @@ module MikMort
       # Get effective interior height
       def interior_height
         case @type
-        when :base, :island
+        when :base, :island, :corner_base, :miele_dishwasher
           @height - Constants::BASE_CABINET[:toe_kick_height]
         when :subzero_fridge
           # Full height minus top clearance for ventilation
           @height - Constants::SUBZERO_FRIDGE[:clearance_top]
-        when :miele_dishwasher
-          # Full height minus toe kick (like base cabinet)
-          @height - Constants::MIELE_DISHWASHER[:toe_kick_height]
         when :range
           # Full height (no reduction for ranges)
           @height

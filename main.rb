@@ -130,8 +130,8 @@ module MikMort
         depth: Constants::MIELE_DISHWASHER[:depth],
         height: Constants::MIELE_DISHWASHER[:height],
         frame_type: :frameless,
-        door_drawer_config: :doors,
-        has_countertop: options[:countertop] || false,
+        door_drawer_config: :'1_drawer',
+        has_countertop: options[:countertop] || true,
         has_backsplash: false
       })
       
