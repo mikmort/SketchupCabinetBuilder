@@ -272,6 +272,8 @@ module MikMort
           extrude = side == :left ? thickness : thickness
           top_z = total_height
           
+          puts "DEBUG create_toe_kick_side_panel: side=#{side}, width=#{width}, thickness=#{thickness}, plane_x=#{plane_x}, extrude=#{extrude}"
+          
           pts = [
             [plane_x, kick_depth, 0],
             [plane_x, depth, 0],
@@ -358,41 +360,41 @@ module MikMort
         # Build Miele dishwasher enclosure
         def build_dishwasher_box(cabinet, carcass_group)
           begin
-            thickness = Constants::MIELE_DISHWASHER[:panel_thickness]
+            entities = carcass_group.entities
+            thickness = Constants::BASE_CABINET[:panel_thickness]
             
             width = cabinet.width
             depth = cabinet.depth
             height = cabinet.interior_height
             
-            # Convert to SketchUp units
+            # Convert to SketchUp units (inches)
             w = width.inch
             d = depth.inch
             h = height.inch
             t = thickness.inch
             
-            # Dishwasher opening (simple frame - no back or sides needed for built-in)
-            # Just create a placeholder box to show space
+            # Dishwasher has toe kick like base cabinet
+            kick_height = Constants::BASE_CABINET[:toe_kick_height].inch
+            kick_depth = Constants::BASE_CABINET[:toe_kick_depth].inch
+            total_height = kick_height + h
             
-            # Bottom panel group
-            bottom_group = carcass_group.entities.add_group
-            bottom_group.name = "Opening Marker"
+            # Create all panels (same as base cabinet)
+            back_thickness = (thickness * 0.5).inch
             
-            # Create simple outline showing dishwasher space
-            pts = [[0, 0, 0], [w, 0, 0], [w, d, 0], [0, d, 0]]
-            outline = bottom_group.entities.add_face(pts)
-            outline.material = @materials.interior_material if outline
+            # Bottom panel (elevated by kick_height, full depth from front to back)
+            pts = [[0, 0, kick_height], [w, 0, kick_height], [w, d, kick_height], [0, d, kick_height]]
+            create_simple_box(entities, pts, t, @materials.box_material)
             
-            # Add text note group
-            note_group = carcass_group.entities.add_group
-            note_group.name = "DW_Note"
-            note_text_pts = [[t, d/2, h/2], [w-t, d/2, h/2], [w-t, d/2, h/2 + 6.inch], [t, d/2, h/2 + 6.inch]]
-            note_face = note_group.entities.add_face(note_text_pts)
-            note_face.material = @materials.interior_material if note_face
+            # Left/right side panels (with toe kick notch)
+            create_toe_kick_side_panel(entities, :left, w, d, t, total_height, kick_height, kick_depth, @materials.box_material)
+            create_toe_kick_side_panel(entities, :right, w, d, t, total_height, kick_height, kick_depth, @materials.box_material)
             
-            # Toe kick (matches base cabinets)
-            toe_group = carcass_group.entities.add_group
-            toe_group.name = "Toe Kick"
-            add_toe_kick(toe_group.entities, width, depth)
+            # Back panel (slightly thinner, elevated by kick_height, full width for frameless)
+            pts = [[0, d - back_thickness, kick_height], [w, d - back_thickness, kick_height], [w, d, kick_height], [0, d, kick_height]]
+            create_simple_box(entities, pts, h, @materials.box_material)
+            
+            # Add toe kick
+            add_toe_kick(entities, width, depth)
             
           rescue => e
             puts "Error building Miele dishwasher box: #{e.message}"

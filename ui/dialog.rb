@@ -8,6 +8,8 @@ module MikMort
       
       def initialize
         @dialog = nil
+        @current_run = nil
+        @current_room = "Kitchen"
       end
       
       # Show the dialog
@@ -39,9 +41,14 @@ module MikMort
           }
         )
         
-        # Set the HTML file
+        # Set the HTML file with cache busting
         html_file = File.join(__dir__, '..', 'resources', 'dialog.html')
-        @dialog.set_file(html_file)
+        html_content = File.read(html_file)
+        puts "DEBUG: Loading HTML file: #{html_file}"
+        puts "DEBUG: HTML contains 'CONFIG GENERATION v2': #{html_content.include?('CONFIG GENERATION v2')}"
+        # Add timestamp to force reload
+        html_content.sub!('<head>', "<head><meta http-equiv='Cache-Control' content='no-cache, no-store, must-revalidate'><meta http-equiv='Pragma' content='no-cache'><meta http-equiv='Expires' content='0'>")
+        @dialog.set_html(html_content)
         
         # Add callbacks
         add_callbacks
@@ -53,6 +60,32 @@ module MikMort
         @dialog.add_action_callback('get_existing_runs') do |action_context|
           runs = get_existing_runs
           @dialog.execute_script("receiveExistingRuns(#{runs.to_json})")
+        end
+        
+        # Get current run info
+        @dialog.add_action_callback('get_current_run') do |action_context|
+          run_info = get_current_run_info
+          @dialog.execute_script("receiveCurrentRun(#{run_info.to_json})")
+        end
+        
+        # Create new run
+        @dialog.add_action_callback('create_run') do |action_context, params|
+          handle_create_run(params)
+        end
+        
+        # Select run
+        @dialog.add_action_callback('select_run') do |action_context, run_id|
+          handle_select_run(run_id)
+        end
+        
+        # Rename run
+        @dialog.add_action_callback('rename_run') do |action_context, params|
+          handle_rename_run(params)
+        end
+        
+        # Delete run
+        @dialog.add_action_callback('delete_run') do |action_context, run_id|
+          handle_delete_run(run_id)
         end
         
         # Handle cabinet creation
@@ -69,32 +102,95 @@ module MikMort
       # Get all existing cabinet runs from model
       def get_existing_runs
         model = Sketchup.active_model
-        connection_manager = Geometry::CabinetConnectionManager.new(model)
-        runs = connection_manager.get_all_runs
+        Models::CabinetRunManager.all(model).map(&:to_hash)
+      end
+      
+      # Get current run information
+      def get_current_run_info
+        if @current_run && @current_run.group.valid?
+          @current_run.to_hash
+        else
+          nil
+        end
+      end
+      
+      # Create a new run
+      def handle_create_run(json_params)
+        require 'json'
+        params = JSON.parse(json_params)
         
-        runs.map do |run|
-          {
-            name: run[:name],
-            cabinet_count: run[:cabinet_count],
-            bounds: {
-              min_x: (run[:bounds].min.x / 1.inch).round(2),
-              max_x: (run[:bounds].max.x / 1.inch).round(2),
-              width: (run[:bounds].width / 1.inch).round(2)
-            }
-          }
+        model = Sketchup.active_model
+        run_name = params['name'] || "Run #{Models::CabinetRunManager.all(model).length + 1}"
+        room_name = params['room_name'] || @current_room
+        
+        @current_run = Models::CabinetRunManager.new(model, run_name, room_name)
+        @current_room = room_name
+        
+        # Send updated run info back
+        @dialog.execute_script("receiveCurrentRun(#{@current_run.to_hash.to_json})")
+      end
+      
+      # Select an existing run
+      def handle_select_run(run_id)
+        model = Sketchup.active_model
+        run = Models::CabinetRunManager.all(model).find { |r| r.id == run_id }
+        
+        if run
+          @current_run = run
+          @current_room = run.room_name
+          @dialog.execute_script("receiveCurrentRun(#{run.to_hash.to_json})")
+        end
+      end
+      
+      # Rename a run
+      def handle_rename_run(json_params)
+        require 'json'
+        params = JSON.parse(json_params)
+        
+        model = Sketchup.active_model
+        run = Models::CabinetRunManager.all(model).find { |r| r.id == params['run_id'] }
+        
+        if run
+          run.rename(params['new_name'])
+          @dialog.execute_script("receiveExistingRuns(#{get_existing_runs.to_json})")
+        end
+      end
+      
+      # Delete a run
+      def handle_delete_run(run_id)
+        model = Sketchup.active_model
+        run = Models::CabinetRunManager.all(model).find { |r| r.id == run_id }
+        
+        if run
+          run.delete
+          @current_run = nil if @current_run && @current_run.id == run_id
+          @dialog.execute_script("receiveExistingRuns(#{get_existing_runs.to_json})")
+          @dialog.execute_script("receiveCurrentRun(null)")
         end
       end
       
       # Handle cabinet creation from dialog
       def handle_create_cabinet(json_params)
         require 'json'
+        require 'uri'
         
         begin
-          params = JSON.parse(json_params)
-          room_name = params['room_name'] || 'Room'
+          puts "DEBUG RAW PARAMS: #{json_params[0..200]}"
+          # Decode URI component first (since we use encodeURIComponent in HTML)
+          decoded_params = URI.decode_www_form_component(json_params)
+          puts "DEBUG DECODED PARAMS: #{decoded_params[0..200]}"
+          params = JSON.parse(decoded_params)
+          room_name = params['room_name'] || @current_room
           
-          # Create the generator
-          generator = Geometry::CabinetGenerator.new(Sketchup.active_model, room_name)
+          # Ensure we have a current run
+          unless @current_run && @current_run.group.valid?
+            model = Sketchup.active_model
+            @current_run = Models::CabinetRunManager.find_or_create(model, "Run 1", room_name)
+            @current_room = room_name
+          end
+          
+          # Create the generator with the current run
+          generator = Geometry::CabinetGenerator.new(Sketchup.active_model, room_name, @current_run)
           
           if params['build_mode'] == 'single'
             # Create single cabinet
@@ -112,22 +208,57 @@ module MikMort
         end
       end
       
+      # Build door/drawer config from individual parameters
+      def build_door_drawer_config(door_count, drawer_count, drawer_sizing, layout_order)
+        if door_count == 0 && drawer_count == 0
+          :doors  # Default
+        elsif door_count > 0 && drawer_count == 0
+          :doors
+        elsif door_count == 0 && drawer_count > 0
+          # Drawers only
+          if drawer_sizing == 'custom'
+            :custom_drawers
+          elsif drawer_sizing == 'equal'
+            "#{drawer_count}_equal_drawers".to_sym
+          else
+            drawer_count == 3 ? :drawers : "#{drawer_count}_drawers".to_sym
+          end
+        else
+          # Both doors and drawers - use string with +
+          # NOTE: Sections are built bottom-to-top, so reverse the order
+          if layout_order == 'drawers_top'
+            "door+#{drawer_count}_drawers"  # Door first (bottom), drawers second (top)
+          else
+            "#{drawer_count}_drawers+door"  # Drawers first (bottom), door second (top)
+          end
+        end
+      end
+      
       # Create a single cabinet
       def create_single_cabinet(generator, params)
         begin
           cabinet_params = params['cabinet']
           
+          puts "\n=== DIALOG PARAMS RECEIVED ==="
+          puts "door_count: #{cabinet_params['door_count']}"
+          puts "drawer_count: #{cabinet_params['drawer_count']}"
+          puts "drawer_sizing: #{cabinet_params['drawer_sizing']}"
+          puts "layout_order: #{cabinet_params['layout_order']}"
+          puts "custom_drawer_heights: #{cabinet_params['custom_drawer_heights'].inspect}"
+          puts "============================\n"
+          
           # Convert string keys to symbols where needed
           type = cabinet_params['type'].to_sym
           frame_type = cabinet_params['frame_type'].to_sym
           
-          # Handle door/drawer config
-          config = cabinet_params['door_drawer_config']
-          if config.is_a?(String) && (config.include?('+') || config.include?('drawer'))
-            # Keep as string for mixed configs
-          else
-            config = config.to_sym
-          end
+          # Build door/drawer config from individual parameters
+          door_count = cabinet_params['door_count'].to_i
+          drawer_count = cabinet_params['drawer_count'].to_i
+          drawer_sizing = cabinet_params['drawer_sizing'] || 'equal'
+          layout_order = cabinet_params['layout_order'] || 'drawers_top'
+          
+          config = build_door_drawer_config(door_count, drawer_count, drawer_sizing, layout_order)
+          puts "Built config: #{config.inspect}"
           
           # Create cabinet options hash
           options = {
@@ -139,6 +270,11 @@ module MikMort
             has_countertop: cabinet_params['has_countertop'],
             has_backsplash: cabinet_params['has_backsplash']
           }
+          
+          # Add custom drawer heights if provided
+          if cabinet_params['custom_drawer_heights']
+            options[:custom_drawer_heights] = cabinet_params['custom_drawer_heights'].map(&:to_f)
+          end
           
           # Add corner type if corner cabinet
           if type == :corner_base || type == :corner_wall
@@ -170,9 +306,7 @@ module MikMort
             result = generator.generate_cabinet(cabinet)
           end
           
-          if result
-            UI.messagebox("Cabinet created successfully!")
-          else
+          if !result
             UI.messagebox("Failed to create cabinet. Check Ruby Console for errors.")
           end
         rescue => e

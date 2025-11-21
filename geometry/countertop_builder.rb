@@ -30,7 +30,65 @@ module MikMort
           parent_group
         end
         
+        # Build countertop and backsplash into separate groups
+        # Used by the new run-based system
+        def build_separate(cabinet, countertop_group, backsplash_group, options = {})
+          if cabinet.is_a?(Array)
+            build_continuous_separate(cabinet, countertop_group, backsplash_group, options)
+          else
+            build_single_separate(cabinet, countertop_group, backsplash_group, options)
+          end
+        end
+        
         private
+        
+        # Build single cabinet countertop into separate groups
+        def build_single_separate(cabinet, countertop_group, backsplash_group, options)
+          front_overhang = countertop_overhang(:overhang_front)
+          side_overhang = options[:add_side_overhang] ? countertop_overhang(:overhang_side) : 0
+          back_overhang = countertop_overhang(:overhang_back)
+          base_depth = cabinet_depth_value(cabinet)
+
+          width = cabinet.width + (2 * side_overhang)
+          depth = base_depth + front_overhang + back_overhang
+          thickness = Constants::COUNTERTOP[:thickness]
+          cabinet_height = cabinet.height || Constants::BASE_CABINET[:height]
+          
+          if cabinet.type == :island && cabinet.has_seating_side
+            depth += Constants::ISLAND_CABINET[:seating_overhang]
+          end
+          
+          w = width.inch
+          d = depth.inch
+          t = thickness.inch
+          
+          start_x = -side_overhang.inch
+          start_y = -front_overhang.inch
+          start_z = cabinet_height.inch
+          
+          # Create countertop slab
+          create_countertop_slab(countertop_group.entities, start_x, start_y, start_z, w, d, t)
+          
+          # Create backsplash if needed
+          if cabinet.has_backsplash
+            backsplash_height = Constants::COUNTERTOP[:backsplash_height].inch
+            backsplash_y = start_y + d - back_overhang.inch
+            backsplash_z = start_z + t
+            create_backsplash(backsplash_group.entities, start_x, backsplash_y, backsplash_z, 
+                            w, backsplash_height, t)
+          end
+        end
+        
+        # Build continuous countertop for multiple cabinets into separate groups
+        def build_continuous_separate(cabinets, countertop_group, backsplash_group, options)
+          return if cabinets.empty?
+          
+          # For now, build each cabinet separately
+          # TODO: Create actual continuous countertop
+          cabinets.each do |cabinet|
+            build_single_separate(cabinet, countertop_group, backsplash_group, options)
+          end
+        end
         
         # Build countertop for a single cabinet
         def build_single_countertop(cabinet, countertop_group, options)

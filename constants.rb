@@ -29,24 +29,24 @@ module MikMort
         mounting_height: 54.0 # Bottom of cabinet from floor (18" above 36" counter)
       }.freeze
       
-      # Wall Stack Configuration (10-foot stack)
+      # Wall Stack Configuration (Upper 42"+12+12: 42" door with two 12" drawers)
       WALL_STACK = {
         depth: 12.0,          # Same as wall cabinet
-        lower_height: 42.0,   # Main upper cabinet (42")
-        upper_stack_count: 2, # Two stacked cabinets
-        upper_stack_height: 12.0, # Each stack is 12"
+        lower_height: 42.0,   # Main upper door (42")
+        upper_stack_count: 2, # Two stacked 12" drawers
+        upper_stack_height: 12.0, # Each drawer is 12"
         total_height: 66.0,   # 42" + (2 × 12") = 66" total
         panel_thickness: 0.75,
         mounting_height: 54.0, # Same as standard wall
         stack_reveal: 0.125   # Small reveal between sections
       }.freeze
       
-      # Wall Stack 9-foot Configuration (9-foot ceiling)
+      # Wall Stack 9-foot Configuration (Upper 42"+12: 42" door with one 12" drawer)
       WALL_STACK_9FT = {
         depth: 12.0,          # Same as wall cabinet
-        lower_height: 42.0,   # Main upper cabinet (42")
-        upper_stack_count: 1, # One stacked cabinet
-        upper_stack_height: 12.0, # Stack is 12"
+        lower_height: 42.0,   # Main upper door (42")
+        upper_stack_count: 1, # One stacked 12" drawer
+        upper_stack_height: 12.0, # Drawer is 12"
         total_height: 54.0,   # 42" + 12" = 54" total
         panel_thickness: 0.75,
         mounting_height: 54.0, # Same as standard wall
@@ -146,9 +146,9 @@ module MikMort
       
       # Door and Drawer Standards
       DOOR_DRAWER = {
-        reveal: 0.125,        # 1/8" spacing between doors/drawers
+        reveal: 0.125,        # 1/8" spacing between doors/drawers and for framed cabinets
         overlay: 0.375,       # 3/8" overlay for framed cabinets
-        frameless_overlay: 0.0625, # 1/16" past carcass for frameless coverage
+        frameless_reveal: 0.0625, # 1/16" reveal (2mm) on each side for frameless - doors are NARROWER than cabinet
         thickness: 0.75,      # Door/drawer front thickness
         hinge_width: 1.5,     # European hinge width
         hinge_height: 3.0,    # Hinge plate height

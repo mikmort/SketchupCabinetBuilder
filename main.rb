@@ -18,6 +18,7 @@ module MikMort
     # Load models
     require File.join(base_path, 'models', 'cabinet.rb')
     require File.join(base_path, 'models', 'cabinet_run.rb')
+    require File.join(base_path, 'models', 'cabinet_run_manager.rb')
     
     # Load geometry builders
     require File.join(base_path, 'geometry', 'box_builder.rb')

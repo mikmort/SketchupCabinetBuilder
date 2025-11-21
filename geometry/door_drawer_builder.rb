@@ -36,12 +36,18 @@ module MikMort
             toe_kick_offset = toe_kick_base_offset(cabinet)
             current_z = frame_offset + toe_kick_offset
             
+            puts "DEBUG: config_sections=#{config_sections.inspect}"
+            
             config_sections.each do |section|
               section_height = available_height * section[:ratio]
               
+              puts "DEBUG: Processing section: type=#{section[:type]}, ratio=#{section[:ratio]}, count=#{section[:count]}, section_height=#{section_height}"
+              
               if section[:type] == :drawer
                 equal_sizing = section[:equal_sizing] || false
-                build_drawers(fronts_group, hardware_group, cabinet, section[:count], current_z, section_height, equal_sizing)
+                custom_heights = section[:custom_heights] ? cabinet.options[:custom_drawer_heights] : nil
+                drawer_count = custom_heights ? custom_heights.length : section[:count]
+                build_drawers(fronts_group, hardware_group, cabinet, drawer_count, current_z, section_height, equal_sizing, custom_heights)
               else
                 door_count = door_count_for_section(cabinet, section[:count])
                 build_doors(fronts_group, hardware_group, cabinet, door_count, current_z, section_height)
@@ -57,7 +63,7 @@ module MikMort
         
         private
         
-        # Build doors for wall stack (42" lower + stacked upper)
+        # Build doors/drawers for wall stack (42" lower door + stacked 12" drawers)
         def build_wall_stack_doors(cabinet, fronts_group, hardware_group)
           # Get configuration based on type
           config = cabinet.type == :wall_stack_9ft ? Constants::WALL_STACK_9FT : Constants::WALL_STACK
@@ -75,14 +81,14 @@ module MikMort
           
           current_z = 0
           
-          # Lower 42" doors
+          # Lower 42" door
           build_doors(fronts_group, hardware_group, cabinet, door_count, current_z, lower_height)
           
           current_z += lower_height + (stack_reveal / 1.inch)
           
-          # Stacked 12" doors (two separate units)
+          # Stacked 12" drawers (one or two depending on config)
           stack_count.times do |i|
-            build_doors(fronts_group, hardware_group, cabinet, door_count, current_z, upper_height)
+            build_drawers(fronts_group, hardware_group, cabinet, 1, current_z, upper_height, true)
             current_z += upper_height + (stack_reveal / 1.inch)
           end
         end
@@ -92,8 +98,8 @@ module MikMort
           return if door_count.nil? || door_count <= 0
           door_count = door_count.to_i
           reveal = Constants::DOOR_DRAWER[:reveal].inch
-          frameless_overlay = cabinet.frame_type == :frameless ? Constants::DOOR_DRAWER[:frameless_overlay].inch : 0
-          center_reveal = reveal
+          frameless_reveal = Constants::DOOR_DRAWER[:frameless_reveal].inch
+          center_reveal = cabinet.frame_type == :frameless ? frameless_reveal : reveal
           thickness = Constants::DOOR_DRAWER[:thickness].inch
           overlay = cabinet.frame_type == :framed ? Constants::DOOR_DRAWER[:overlay].inch : 0
           
@@ -102,8 +108,9 @@ module MikMort
           
           # Available width adjustments based on frame type
           if cabinet.frame_type == :frameless
-            width_available = width + (2 * frameless_overlay)
-            edge_start = -frameless_overlay
+            # Frameless: doors are NARROWER than cabinet box to create 1/16" reveals on each side
+            width_available = width - (2 * frameless_reveal)
+            edge_start = frameless_reveal
           else
             width_available = width - (2 * reveal)
             edge_start = reveal
@@ -153,9 +160,9 @@ module MikMort
         end
         
         # Build drawers
-        def build_drawers(fronts_group, hardware_group, cabinet, drawer_count, start_z, total_height, equal_sizing = false)
+        def build_drawers(fronts_group, hardware_group, cabinet, drawer_count, start_z, total_height, equal_sizing = false, custom_heights = nil)
           reveal = Constants::DOOR_DRAWER[:reveal].inch
-          frameless_overlay = cabinet.frame_type == :frameless ? Constants::DOOR_DRAWER[:frameless_overlay].inch : 0
+          frameless_reveal = Constants::DOOR_DRAWER[:frameless_reveal].inch
           thickness = Constants::DOOR_DRAWER[:thickness].inch
           overlay = cabinet.frame_type == :framed ? Constants::DOOR_DRAWER[:overlay].inch : 0
           
@@ -163,7 +170,11 @@ module MikMort
           depth = cabinet.depth.inch
           
           # Calculate individual drawer heights
-          drawer_heights = calculate_drawer_heights(drawer_count, total_height, equal_sizing)
+          drawer_heights = if custom_heights && !custom_heights.empty?
+            custom_heights
+          else
+            calculate_drawer_heights(drawer_count, total_height, equal_sizing)
+          end
           
           current_z = start_z
           
@@ -173,8 +184,9 @@ module MikMort
             
             # Create drawer front directly in parent (NO sub-group)
             if cabinet.frame_type == :frameless
-              drawer_x = -frameless_overlay
-              drawer_width = width + (2 * frameless_overlay)
+              # Frameless: drawer is NARROWER than cabinet box (1/16" reveal on each side)
+              drawer_x = frameless_reveal
+              drawer_width = width - (2 * frameless_reveal)
             else
               drawer_x = reveal
               drawer_width = width - (2 * reveal)

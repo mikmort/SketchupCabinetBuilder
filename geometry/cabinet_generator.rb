@@ -7,100 +7,83 @@ module MikMort
       
       class CabinetGenerator
         
-        def initialize(model, room_name)
+        attr_reader :current_run
+        
+        def initialize(model, room_name, run_manager = nil)
           @model = model
+          @room_name = room_name
           @materials = MaterialManager.new(model, room_name)
           @box_builder = BoxBuilder.new(model, @materials)
           @door_drawer_builder = DoorDrawerBuilder.new(model, @materials)
           @countertop_builder = CountertopBuilder.new(model, @materials)
           @validator = GeometryValidator.new
           @connection_manager = CabinetConnectionManager.new(model)
+          
+          # Use provided run manager or create default
+          @current_run = run_manager || Models::CabinetRunManager.find_or_create(model, "Run 1", room_name)
         end
         
-        # Generate a single cabinet
+        # Set the active run
+        def set_run(run_manager)
+          @current_run = run_manager
+        end
+        
+        # Generate a single cabinet and add it to the current run
         # @param cabinet [Cabinet] Cabinet specification
-        # @param options [Hash] Options for run connection
-        #   :force_new_run - Create new run even if nearby cabinets exist
-        #   :extend_run - Name of specific run to extend
-        # @return [Sketchup::Group] The complete cabinet group
+        # @param options [Hash] Options for positioning
+        # @return [Boolean] Success status
         def generate_cabinet(cabinet, options = {})
-          return nil unless cabinet.valid?
+          return false unless cabinet.valid?
           
-          @model.start_operation('Create Cabinet', true)
+          @model.start_operation('Add Cabinet to Run', true)
           
           begin
-            # Handle run connection options
-            if options[:extend_run]
-              # Extend specific run
-              return extend_specific_run(cabinet, options[:extend_run])
-            elsif options[:force_new_run]
-              # Create standalone or new run
-              return create_standalone_cabinet(cabinet)
-            else
-              # Auto mode: position next to existing cabinets
-              adjusted_position = @connection_manager.auto_position_cabinet(cabinet)
-              cabinet.position = adjusted_position
-            end
+            # Determine position (either specified or next in run)
+            position = options[:position] || @current_run.next_position
             
-            puts "DEBUG: Creating cabinet at position: #{cabinet.position.inspect}"
+            puts "DEBUG: Creating cabinet at position: #{position.inspect}"
             
-            # Check for nearby cabinets to connect to (after positioning)
-            connection = @connection_manager.find_nearby_cabinet(cabinet.position, cabinet.type)
-            puts "DEBUG: Connection found: #{connection ? 'YES' : 'NO'}"
-            puts "DEBUG: Connection distance: #{connection[:distance]} inches" if connection
+            # Create temporary groups for building
+            temp_group = @model.active_entities.add_group
             
-            # Create main cabinet group with descriptive name
-            frame_type = cabinet.frame_type == :framed ? "Framed" : "Frameless"
-            width_mm = (cabinet.width * 25.4).round
-            depth_mm = (cabinet.depth * 25.4).round
-            component_name = "CABINET_#{cabinet.type.to_s.capitalize}_#{width_mm}x#{depth_mm}_#{frame_type}"
+            carcass_group = temp_group.entities.add_group
+            carcass_group.name = "Carcass_temp"
             
-            cabinet_group = @model.active_entities.add_group
-            cabinet_group.name = component_name
+            fronts_group = temp_group.entities.add_group
+            fronts_group.name = "Fronts_temp"
             
-            # Create organized sub-groups
-            carcass_group = cabinet_group.entities.add_group
-            carcass_group.name = "Carcass"
+            hardware_group = temp_group.entities.add_group
+            hardware_group.name = "Hardware_temp"
             
-            fronts_group = cabinet_group.entities.add_group
-            fronts_group.name = "Fronts"
+            countertop_group = nil
+            backsplash_group = nil
             
-            hardware_group = cabinet_group.entities.add_group
-            hardware_group.name = "Hardware"
-            
-            # Build cabinet box (carcass)
+            # Build cabinet components
             @box_builder.build(cabinet, carcass_group)
-            
-            # Build doors and drawers (fronts + hardware)
             @door_drawer_builder.build(cabinet, fronts_group, hardware_group)
             
-            # Build countertop if specified (separate group at cabinet level)
+            # Build countertop and backsplash if specified
             if cabinet.has_countertop
-              @countertop_builder.build(cabinet, cabinet_group)
+              countertop_group = temp_group.entities.add_group
+              countertop_group.name = "Countertop_temp"
+              backsplash_group = temp_group.entities.add_group
+              backsplash_group.name = "Backsplash_temp"
+              @countertop_builder.build_separate(cabinet, countertop_group, backsplash_group)
             end
             
-            # Position the cabinet AFTER building
-            x, y, z = cabinet.position
-            cabinet_group.transformation = Geom::Transformation.new([x.inch, y.inch, z.inch])
+            # Move components into run's sub-groups
+            move_to_run_groups(carcass_group, fronts_group, hardware_group, countertop_group, backsplash_group, position)
             
-            # Validate geometry
-            @validator.validate_cabinet(cabinet, cabinet_group)
-            
-            # Connect to nearby cabinet if found
-            if connection && connection[:distance] < 6.0
-              final_group = @connection_manager.connect_cabinets(cabinet_group, connection)
-              @model.commit_operation
-              return final_group
-            end
+            # Clean up temporary group
+            temp_group.erase! if temp_group.valid?
             
             @model.commit_operation
-            cabinet_group
+            true
           rescue => e
             @model.abort_operation
             puts "Error creating cabinet: #{e.message}"
             puts e.backtrace.first(10).join("\n")
-            UI.messagebox("Error creating cabinet: #{e.message}\n\nCheck Ruby Console for details.")
-            nil
+            false
           end
         end
         
@@ -344,6 +327,46 @@ module MikMort
           @validator.validate_cabinet(cabinet, cabinet_group)
           
           cabinet_group
+        end
+        
+        private
+        
+        # Move component groups into the run's organized sub-groups
+        def move_to_run_groups(carcass, fronts, hardware, countertop, backsplash, position)
+          transformation = Geom::Transformation.translation(position.to_a.map { |v| v.to_f.inch })
+          
+          # Helper to transfer all geometry from source group to target group
+          transfer_geometry = lambda do |source_group, target_group|
+            return unless source_group && source_group.valid? && source_group.entities.length > 0
+            
+            # Copy all entities to target group with transformation applied
+            entities_to_copy = source_group.entities.to_a
+            entities_to_copy.each do |entity|
+              next unless entity.valid?
+              
+              if entity.is_a?(Sketchup::Group) || entity.is_a?(Sketchup::ComponentInstance)
+                # For groups/components, add instance with transformation
+                combined_transform = transformation * entity.transformation
+                target_group.entities.add_instance(entity.definition, combined_transform)
+              elsif entity.is_a?(Sketchup::Face)
+                # For faces, transform vertices and add to target
+                points = entity.vertices.map { |v| v.position.transform(transformation) }
+                new_face = target_group.entities.add_face(points)
+                new_face.material = entity.material if entity.material
+                new_face.back_material = entity.back_material if entity.back_material
+              elsif entity.is_a?(Sketchup::Edge)
+                # Edges will be created automatically with faces
+                # or we can add them explicitly if needed
+              end
+            end
+          end
+          
+          # Transfer entities to run's sub-groups
+          transfer_geometry.call(carcass, @current_run.carcass_group)
+          transfer_geometry.call(fronts, @current_run.faces_group)
+          transfer_geometry.call(hardware, @current_run.hardware_group)
+          transfer_geometry.call(countertop, @current_run.countertops_group)
+          transfer_geometry.call(backsplash, @current_run.backsplash_group)
         end
         
       end

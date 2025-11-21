@@ -94,9 +94,20 @@ module MikMort
       # Parse door/drawer configuration
       # Returns array of sections: [{type: :drawer, ratio: 0.3}, {type: :door, ratio: 0.7}]
       def parse_config
+        puts "DEBUG parse_config: door_drawer_config=#{@door_drawer_config.inspect} (class: #{@door_drawer_config.class})"
+        
         if @door_drawer_config.is_a?(String)
-          parse_mixed_config(@door_drawer_config)
+          # Try to convert string to symbol for known configs first
+          config_sym = @door_drawer_config.to_sym
+          if is_simple_config?(config_sym)
+            puts "DEBUG: Using parse_simple_config for #{config_sym}"
+            parse_simple_config(config_sym)
+          else
+            puts "DEBUG: Using parse_mixed_config for string: #{@door_drawer_config}"
+            parse_mixed_config(@door_drawer_config)
+          end
         elsif @door_drawer_config.is_a?(Symbol)
+          puts "DEBUG: Using parse_simple_config for symbol #{@door_drawer_config}"
           parse_simple_config(@door_drawer_config)
         else
           [{type: :door, ratio: 1.0}] # Default to full door
@@ -104,6 +115,16 @@ module MikMort
       end
       
       private
+      
+      # Check if config is a known simple config (not mixed like "2 drawers + door")
+      def is_simple_config?(config_sym)
+        simple_configs = [
+          :doors, :'1_drawer', :'2_drawers', :drawers, :'3_drawers', :'4_drawers', :'5_drawers',
+          :'3_equal_drawers', :'4_equal_drawers', :'1_drawer+door', :'2_drawers+door',
+          :drawer_bank_3, :drawer_bank_4
+        ]
+        simple_configs.include?(config_sym)
+      end
       
       # Set default dimensions based on cabinet type
       def set_default_dimensions
@@ -180,6 +201,8 @@ module MikMort
           [{type: :drawer, ratio: 1.0, count: 3, equal_sizing: true}] # Three equal drawers
         when :'4_equal_drawers'
           [{type: :drawer, ratio: 1.0, count: 4, equal_sizing: true}] # Four equal drawers
+        when :'custom_drawers'
+          [{type: :drawer, ratio: 1.0, count: 0, equal_sizing: false, custom_heights: true}] # Custom drawer heights
         when :'1_drawer+door'
           [{type: :drawer, ratio: 0.3, count: 1, equal_sizing: true}, {type: :door, ratio: 0.7, count: 1}]
         when :'2_drawers+door'
@@ -195,8 +218,10 @@ module MikMort
       
       # Parse mixed configuration string like "2 drawers + door"
       def parse_mixed_config(config_string)
+        puts "DEBUG parse_mixed_config: input=#{config_string.inspect}"
         sections = []
         parts = config_string.downcase.split('+').map(&:strip)
+        puts "DEBUG: split parts=#{parts.inspect}"
         
         # Calculate total ratio
         total_parts = parts.length
@@ -219,6 +244,7 @@ module MikMort
           end
         end
         
+        puts "DEBUG: parse_mixed_config result=#{sections.inspect}"
         sections.empty? ? [{type: :door, ratio: 1.0, count: 2}] : sections
       end
       
