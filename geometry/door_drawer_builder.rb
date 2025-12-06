@@ -19,9 +19,18 @@ module MikMort
         # @return [Array<Sketchup::Group>] Array of door/drawer groups
         def build(cabinet, fronts_group, hardware_group)
           begin
+            puts "DEBUG: DoorDrawerBuilder.build called. Cabinet type: #{cabinet.type.inspect} (#{cabinet.type.class})"
+            
             # Special handling for wall stack - create doors for each section
-            if cabinet.type == :wall_stack || cabinet.type == :wall_stack_9ft
+            if cabinet.type == :wall_stack || cabinet.type == :wall_stack_9ft || cabinet.type.to_s == 'wall_stack' || cabinet.type.to_s == 'wall_stack_9ft'
               build_wall_stack_doors(cabinet, fronts_group, hardware_group)
+              return
+            end
+            
+            # Special handling for corner cabinets - create doors on two faces
+            if cabinet.type == :corner_base || cabinet.type == :corner_wall || cabinet.type.to_s == 'corner_base' || cabinet.type.to_s == 'corner_wall'
+              puts "DEBUG: Detected corner cabinet. Calling build_corner_doors."
+              build_corner_doors(cabinet, fronts_group, hardware_group)
               return
             end
             
@@ -49,8 +58,9 @@ module MikMort
                 drawer_count = custom_heights ? custom_heights.length : section[:count]
                 build_drawers(fronts_group, hardware_group, cabinet, drawer_count, current_z, section_height, equal_sizing, custom_heights)
               else
-                door_count = door_count_for_section(cabinet, section[:count])
-                build_doors(fronts_group, hardware_group, cabinet, door_count, current_z, section_height)
+                door_count = section[:count]
+                graduated = (cabinet.door_drawer_config == :'3_doors_graduated')
+                build_doors(fronts_group, hardware_group, cabinet, door_count, current_z, section_height, graduated)
               end
               
               current_z += section_height
@@ -62,6 +72,279 @@ module MikMort
         end
         
         private
+        
+        # Build doors for corner cabinets (TRUE L-SHAPED with bi-fold doors)
+        def build_corner_doors(cabinet, fronts_group, hardware_group)
+          reveal = Constants::DOOR_DRAWER[:reveal].inch
+          thickness = Constants::DOOR_DRAWER[:thickness].inch
+          
+          # Determine corner size from corner_type
+          corner_size = case cabinet.corner_type
+          when :inside_36, :outside_36 then 36.0
+          when :inside_24, :outside_24 then 24.0
+          else 36.0
+          end
+          
+          is_inside = cabinet.corner_type.to_s.start_with?('inside')
+          
+          toe_kick_offset = toe_kick_base_offset(cabinet)
+          door_height = cabinet.interior_height.inch - (2 * reveal)
+          door_z = reveal + toe_kick_offset
+          
+          size = corner_size.inch
+          cutout = 12.inch
+          shift_y = -12.inch
+          
+          if is_inside
+            puts "DEBUG: Building Inside Corner Doors"
+            # TRUE L-SHAPED corner (Cutout at Front-Left)
+            # Door 1: Back Leg Front (Y=12, X=0 to 12)
+            # Door 2: Right Leg Side (X=12, Y=0 to 12)
+            
+            entities = fronts_group.entities
+            
+            # Door 1: Left Leg Front (at Y=0)
+            # Width = 12" (minus reveals)
+            # Reduce width to avoid collision with Door 2
+            # Door 2 is at X=12. Door 1 should stop before X=12.
+            # Let's stop at X=11.25 (cutout - thickness)
+            door1_width = cutout - thickness - (2 * reveal)
+            # Position at the front face (Y = cutout + shift_y)
+            # For overlay, it sits in front (negative Y direction)
+            door1_y = cutout + shift_y
+            
+            puts "DEBUG: Door 1: y=#{door1_y}, width=#{door1_width}"
+            
+            door1_pts = [
+              Geom::Point3d.new(reveal, door1_y, door_z),
+              Geom::Point3d.new(cutout - thickness - reveal, door1_y, door_z),
+              Geom::Point3d.new(cutout - thickness - reveal, door1_y, door_z + door_height),
+              Geom::Point3d.new(reveal, door1_y, door_z + door_height)
+            ]
+            face1 = entities.add_face(door1_pts)
+            if face1 && face1.valid?
+              face1.material = @materials.drawer_face_material
+              face1.back_material = @materials.drawer_face_material
+              face1.pushpull(thickness)
+              puts "DEBUG: Door 1 created successfully"
+            else
+              puts "DEBUG: Door 1 creation failed"
+            end
+            
+            # Door 2: Right Leg Side (at X=12)
+            # This door covers the side of the Right Leg (Y=0 to -12)
+            # It sits in front of the carcass (at X=12)
+            # So Door Front is at X=11.25 (Overlay)
+            
+            # Width is the length along Y (12")
+            door2_width = cutout - (2 * reveal) # 12" width
+            door2_x = cutout - thickness # X = 11.25
+            door2_y = 0 + shift_y + reveal # Y = -12 + reveal
+            
+            puts "DEBUG: Door 2 (Side): x=#{door2_x}, y=#{door2_y}, width=#{door2_width}, z=#{door_z}, h=#{door_height}"
+            
+            # Create door as a simple box
+            # Front face at X = 11.25
+            # Back face at X = 12
+            
+            d2_front_x = door2_x
+            d2_back_x = door2_x + thickness
+            
+            # Points for the Front Face (in Y-Z plane)
+            # Y goes from -12 to 0
+            # Z goes from bottom to top
+            
+            # Front Face (X=11.25)
+            f1 = entities.add_face([
+              [d2_front_x, door2_y, door_z],
+              [d2_front_x, door2_y + door2_width, door_z],
+              [d2_front_x, door2_y + door2_width, door_z + door_height],
+              [d2_front_x, door2_y, door_z + door_height]
+            ])
+            f1.material = @materials.drawer_face_material
+            f1.back_material = @materials.drawer_face_material
+            
+            # Back Face (X=12.75)
+            f2 = entities.add_face([
+              [d2_back_x, door2_y, door_z],
+              [d2_back_x, door2_y + door2_width, door_z],
+              [d2_back_x, door2_y + door2_width, door_z + door_height],
+              [d2_back_x, door2_y, door_z + door_height]
+            ])
+            f2.material = @materials.drawer_face_material
+            f2.back_material = @materials.drawer_face_material
+            
+            # Top Face
+            f3 = entities.add_face([
+              [d2_front_x, door2_y, door_z + door_height],
+              [d2_back_x, door2_y, door_z + door_height],
+              [d2_back_x, door2_y + door2_width, door_z + door_height],
+              [d2_front_x, door2_y + door2_width, door_z + door_height]
+            ])
+            f3.material = @materials.drawer_face_material
+            
+            # Bottom Face
+            f4 = entities.add_face([
+              [d2_front_x, door2_y, door_z],
+              [d2_back_x, door2_y, door_z],
+              [d2_back_x, door2_y + door2_width, door_z],
+              [d2_front_x, door2_y + door2_width, door_z]
+            ])
+            f4.material = @materials.drawer_face_material
+            
+            # Left Side (Y = -12)
+            f5 = entities.add_face([
+              [d2_front_x, door2_y, door_z],
+              [d2_back_x, door2_y, door_z],
+              [d2_back_x, door2_y, door_z + door_height],
+              [d2_front_x, door2_y, door_z + door_height]
+            ])
+            f5.material = @materials.drawer_face_material
+            
+            # Right Side (Y = 0)
+            f6 = entities.add_face([
+              [d2_front_x, door2_y + door2_width, door_z],
+              [d2_back_x, door2_y + door2_width, door_z],
+              [d2_back_x, door2_y + door2_width, door_z + door_height],
+              [d2_front_x, door2_y + door2_width, door_z + door_height]
+            ])
+            f6.material = @materials.drawer_face_material
+            
+            puts "DEBUG: Door 2 created manually (Side, 6 faces)"
+          else
+            # Outside corner: doors wrap around the outside
+            
+            # 1. Front "Fake" Door (X wing front face)
+            # No handle, just a panel
+            # Full width of the front face (36")
+            x_door_width = corner_size.inch - (2 * reveal)
+            
+            create_corner_door(fronts_group, hardware_group,
+              reveal, 0, door_z,
+              x_door_width, door_height, thickness, :front, false) # has_handle = false
+            
+            # 2. Right "Real" Door (Y wing right side) - FULL WIDTH
+            # Spans from Y=0 to Y=size (36")
+            # Has handle
+            y_door_width = corner_size.inch - (2 * reveal)
+            
+            # Position: X=size (36), Y=reveal, Z=door_z
+            create_corner_door(fronts_group, hardware_group,
+              size, reveal, door_z,
+              y_door_width, door_height, thickness, :right, true) # has_handle = true
+          end
+        end
+        
+        # Create a door panel for corner cabinets with specified orientation
+        def create_corner_door(fronts_group, hardware_group, x, y, z, width, height, thickness, orientation, has_handle = false)
+          begin
+            puts "DEBUG: create_corner_door called. Orientation: #{orientation}, x=#{x}, y=#{y}, w=#{width}"
+            
+            # Create a group for the door to ensure material application works correctly
+            door_group = fronts_group.entities.add_group
+            entities = door_group.entities
+            
+            push_val = thickness
+            pts = []
+            
+            case orientation
+            when :front
+              # Door on front face (normal Y = 0)
+              # Points on XZ plane at Y=0
+              pts = [
+                Geom::Point3d.new(x, 0, z),
+                Geom::Point3d.new(x + width, 0, z),
+                Geom::Point3d.new(x + width, 0, z + height),
+                Geom::Point3d.new(x, 0, z + height)
+              ]
+              # Extrude in +Y direction (thickness) because normal is -Y?
+              # Wait, if we want it to be at Y=0..-0.75 (Outside), we need to push in -Y direction.
+              # Face normal for (x,0,z)->(x+w,0,z) is -Y (0,-1,0).
+              # Pushpull(val) moves face by val * normal.
+              # If val is positive, it moves in -Y direction.
+              # So we want positive thickness.
+              push_val = thickness
+              
+              if has_handle
+                add_door_handle(hardware_group.entities, x, 0, z, width, height, thickness, :right)
+              end
+              
+            when :left
+              # Door on left face (normal X = 0)
+              pts = [
+                Geom::Point3d.new(0, y, z),
+                Geom::Point3d.new(0, y + width, z),
+                Geom::Point3d.new(0, y + width, z + height),
+                Geom::Point3d.new(0, y, z + height)
+              ]
+              push_val = -thickness # Push out to -X
+              
+            when :left_return
+              # Door on return wing front (at X = x, facing -X direction)
+              pts = [
+                Geom::Point3d.new(x, y, z),
+                Geom::Point3d.new(x, y + width, z),
+                Geom::Point3d.new(x, y + width, z + height),
+                Geom::Point3d.new(x, y, z + height)
+              ]
+              push_val = -thickness
+              
+            when :right
+              # Door on right face (normal X = 1)
+              pts = [
+                Geom::Point3d.new(x, y, z),
+                Geom::Point3d.new(x, y + width, z),
+                Geom::Point3d.new(x, y + width, z + height),
+                Geom::Point3d.new(x, y, z + height)
+              ]
+              push_val = thickness # Push out to +X
+              
+              if has_handle
+                # Custom handle for right-facing door
+                marker_size = 1.inch
+                handle_z = z + height / 2 - marker_size / 2
+                handle_y = y + 2.inch
+                handle_x = x + thickness
+                
+                h_pts = [
+                  [handle_x, handle_y, handle_z],
+                  [handle_x, handle_y + marker_size, handle_z],
+                  [handle_x, handle_y + marker_size, handle_z + marker_size],
+                  [handle_x, handle_y, handle_z + marker_size]
+                ]
+                f = hardware_group.entities.add_face(h_pts)
+                if f && f.valid?
+                  f.material = "Gray"
+                  f.pushpull(marker_size)
+                end
+              end
+            end
+            
+            # Create door face
+            if pts.length == 4
+              face = entities.add_face(pts)
+              if face && face.valid?
+                face.material = @materials.drawer_face_material
+                face.back_material = @materials.drawer_face_material
+                face.pushpull(push_val)
+                puts "DEBUG: Door created successfully. Material: #{@materials.drawer_face_material}"
+              else
+                puts "DEBUG: Failed to create door face"
+              end
+            else
+              puts "DEBUG: Invalid points for door"
+            end
+            
+            # Ensure all faces in the group have the material
+            entities.grep(Sketchup::Face).each do |f|
+              f.material = @materials.drawer_face_material
+              f.back_material = @materials.drawer_face_material
+            end
+          rescue => e
+            puts "ERROR in create_corner_door: #{e.message}"
+            puts e.backtrace.first(3).join("\n")
+          end
+        end
         
         # Build doors/drawers for wall stack (42" lower door + stacked 12" drawers)
         def build_wall_stack_doors(cabinet, fronts_group, hardware_group)
@@ -84,17 +367,17 @@ module MikMort
           # Lower 42" door
           build_doors(fronts_group, hardware_group, cabinet, door_count, current_z, lower_height)
           
-          current_z += lower_height + (stack_reveal / 1.inch)
+          current_z += lower_height
           
-          # Stacked 12" drawers (one or two depending on config)
+          # Stacked 12" doors (one or two depending on config)
           stack_count.times do |i|
-            build_drawers(fronts_group, hardware_group, cabinet, 1, current_z, upper_height, true)
-            current_z += upper_height + (stack_reveal / 1.inch)
+            build_doors(fronts_group, hardware_group, cabinet, door_count, current_z, upper_height)
+            current_z += upper_height
           end
         end
         
         # Build doors
-        def build_doors(fronts_group, hardware_group, cabinet, door_count, start_z, total_height)
+        def build_doors(fronts_group, hardware_group, cabinet, door_count, start_z, total_height, graduated = false)
           return if door_count.nil? || door_count <= 0
           door_count = door_count.to_i
           reveal = Constants::DOOR_DRAWER[:reveal].inch
@@ -116,7 +399,23 @@ module MikMort
             edge_start = reveal
           end
           total_center_spacing = center_reveal * [door_count - 1, 0].max
-          door_width = (width_available - total_center_spacing) / door_count
+          
+          # Calculate door widths (graduated or equal)
+          door_widths = []
+          if graduated && door_count == 3
+            # Graduated sizing: small (20%), medium (30%), large (50%)
+            available_for_doors = width_available - total_center_spacing
+            door_widths = [
+              available_for_doors * 0.20,  # Left door (smallest)
+              available_for_doors * 0.30,  # Middle door
+              available_for_doors * 0.50   # Right door (largest)
+            ]
+          else
+            # Equal sizing
+            door_width = (width_available - total_center_spacing) / door_count
+            door_widths = Array.new(door_count, door_width)
+          end
+          
           door_height = total_height.inch - (2 * reveal)
           
           # Position doors flush with cabinet box front
@@ -125,35 +424,62 @@ module MikMort
           door_z = start_z.inch + reveal
           door_y = 0  # Door face flush with cabinet front
           
-          # Create each door in its own named group
-          (0...door_count).each do |i|
-            door_x = edge_start + (i * (door_width + center_reveal))
+          # Collect all door specifications FIRST (avoid entity invalidation)
+          door_x = edge_start
+          door_specs = (0...door_count).map do |i|
+            spec = {
+              x: door_x,
+              y: door_y,
+              z: door_z,
+              width: door_widths[i],
+              height: door_height,
+              name: door_count == 1 ? "Door" : "Door #{i + 1}",
+              handle_side: door_handle_side(i, door_count, cabinet)
+            }
+            door_x += door_widths[i] + center_reveal  # Move to next door position
+            spec
+          end
+          
+          # Validate fronts_group before using it
+          unless fronts_group && fronts_group.valid?
+            puts "WARNING: fronts_group is invalid at start of door creation"
+            return
+          end
+          
+          # Now create all door geometry
+          door_specs.each do |spec|
+            # Check if fronts_group is still valid before each iteration
+            unless fronts_group && fronts_group.valid?
+              puts "WARNING: fronts_group became invalid during door creation, stopping"
+              break
+            end
             
             # Create door group with descriptive name
             door_group = fronts_group.entities.add_group
-            door_name = door_count == 1 ? "Door" : "Door #{i + 1}"
-            door_group.name = door_name
+            door_group.name = spec[:name]
             
             # Create door panel in door group
             create_door_panel(door_group.entities, 
-                            [door_x, door_y, door_z],
-                            door_width, thickness, door_height,
-                            @materials.door_face_material)
+                            [spec[:x], spec[:y], spec[:z]],
+                            spec[:width], thickness, spec[:height],
+                            @materials.drawer_face_material)
             
             # Add hardware to hardware group
-            handle_side = door_handle_side(i, door_count)
-            add_door_handle(hardware_group.entities, door_x, door_y, door_z, 
-                           door_width, door_height, thickness, handle_side)
+            add_door_handle(hardware_group.entities, spec[:x], spec[:y], spec[:z], 
+                           spec[:width], spec[:height], thickness, spec[:handle_side])
           end
         end
 
-        def door_handle_side(index, door_count)
+        def door_handle_side(index, door_count, cabinet = nil)
+          # Dishwasher template gets top-center handle
+          return :top_center if cabinet && cabinet.options && cabinet.options[:template] == 'dishwasher'
           return :right if door_count == 1
           index.even? ? :right : :left
         end
 
         def door_count_for_section(cabinet, requested_count = nil)
           return requested_count if requested_count && requested_count > 0
+          return 1 if cabinet.options && cabinet.options[:single_door]
           width = cabinet.width || Constants::STANDARD_WIDTHS.min
           return 1 if width < 24
           2
@@ -182,7 +508,10 @@ module MikMort
             # drawer_height is already in inches (as a number)
             # start_z and current_z are also in inches (as numbers)
             
-            # Create drawer front directly in parent (NO sub-group)
+            # Create each drawer in its own sub-group to prevent geometry merging
+            drawer_group = fronts_group.entities.add_group
+            drawer_group.name = "Drawer_#{i+1}"
+            
             if cabinet.frame_type == :frameless
               # Frameless: drawer is NARROWER than cabinet box (1/16" reveal on each side)
               drawer_x = frameless_reveal
@@ -199,25 +528,17 @@ module MikMort
             
             puts "DEBUG: Creating drawer #{i+1}: pos=[#{drawer_x}, #{drawer_y}, #{drawer_z}], size=[#{drawer_width}, #{thickness}, #{actual_drawer_height}]"
             
-            # Drawer face in fronts group
-            result = create_door_panel(fronts_group.entities,
+            # Drawer face in its own group
+            result = create_door_panel(drawer_group.entities,
                             [drawer_x, drawer_y, drawer_z],
                             drawer_width, thickness, actual_drawer_height,
                             @materials.drawer_face_material)
             
             puts "DEBUG: Drawer face created: #{result ? 'success' : 'FAILED'}"
             
-            # Add drawer box to fronts group (behind the face)
-            add_drawer_box(fronts_group.entities, drawer_x, drawer_y + thickness,
-                          drawer_z, drawer_width, depth * 0.75, actual_drawer_height)
-            
             # Add drawer pull to hardware group
             add_drawer_handle(hardware_group.entities, drawer_x, drawer_y, drawer_z,
                             drawer_width, actual_drawer_height, thickness)
-            
-            # Add drawer slides to fronts group
-            add_drawer_slides(fronts_group.entities, drawer_x, drawer_y + thickness,
-                            drawer_z, drawer_width, depth * 0.75, actual_drawer_height)
             
             # Move to next drawer position (drawer_height is in inches)
             current_z += drawer_height
@@ -242,13 +563,17 @@ module MikMort
             when 1
               heights = [total_height]
             when 2
-              heights = [total_height * 0.45, total_height * 0.55]
+              # Reverse: largest first (bottom), smallest last (top)
+              heights = [total_height * 0.55, total_height * 0.45]
             when 3
-              heights = [total_height * 0.25, total_height * 0.30, total_height * 0.45]
+              # Reverse: largest first (bottom), smallest last (top)
+              heights = [total_height * 0.45, total_height * 0.30, total_height * 0.25]
             when 4
-              heights = [total_height * 0.20, total_height * 0.25, total_height * 0.25, total_height * 0.30]
+              # Reverse: largest first (bottom), smallest last (top)
+              heights = [total_height * 0.30, total_height * 0.25, total_height * 0.25, total_height * 0.20]
             when 5
-              heights = [total_height * 0.15, total_height * 0.18, total_height * 0.20, total_height * 0.22, total_height * 0.25]
+              # Reverse: largest first (bottom), smallest last (top)
+              heights = [total_height * 0.25, total_height * 0.22, total_height * 0.20, total_height * 0.18, total_height * 0.15]
             else
               # Equal distribution for 6+ drawers
               heights = Array.new(count, total_height / count.to_f)
@@ -267,7 +592,11 @@ module MikMort
           return nil if width.abs < 0.001 || height.abs < 0.001 || thickness.abs < 0.001
           
           begin
-            # Create a 3D box manually without pushpull (to avoid SketchUp bug)
+            back_y = y - thickness
+            
+            # Create all 6 faces of the box FIRST, then apply materials
+            # This prevents SketchUp from deleting/recreating faces during geometry operations
+            
             # Front face
             front_pts = [
               Geom::Point3d.new(x, y, z),
@@ -275,21 +604,17 @@ module MikMort
               Geom::Point3d.new(x + width, y, z + height),
               Geom::Point3d.new(x, y, z + height)
             ]
-            front_face = entities.add_face(front_pts)
-            front_face.material = material if front_face && material
+            entities.add_face(front_pts)
             
-            # Back face (offset by thickness)
-            back_y = y - thickness
+            # Back face
             back_pts = [
               Geom::Point3d.new(x, back_y, z),
               Geom::Point3d.new(x, back_y, z + height),
               Geom::Point3d.new(x + width, back_y, z + height),
               Geom::Point3d.new(x + width, back_y, z)
             ]
-            back_face = entities.add_face(back_pts)
-            back_face.material = @materials.interior_material if back_face
+            entities.add_face(back_pts)
             
-            # Side faces to close the box
             # Left side
             entities.add_face([
               Geom::Point3d.new(x, y, z),
@@ -306,7 +631,7 @@ module MikMort
               Geom::Point3d.new(x + width, y, z + height)
             ])
             
-            # Top edge
+            # Top
             entities.add_face([
               Geom::Point3d.new(x, y, z + height),
               Geom::Point3d.new(x + width, y, z + height),
@@ -314,7 +639,7 @@ module MikMort
               Geom::Point3d.new(x, back_y, z + height)
             ])
             
-            # Bottom edge
+            # Bottom
             entities.add_face([
               Geom::Point3d.new(x, y, z),
               Geom::Point3d.new(x, back_y, z),
@@ -322,7 +647,15 @@ module MikMort
               Geom::Point3d.new(x + width, y, z)
             ])
             
-            front_face
+            # Apply materials to all faces
+            # For drawer/door panels, apply finished surface to ALL faces on both sides
+            # This ensures consistent appearance regardless of face orientation
+            entities.grep(Sketchup::Face).each do |face|
+              face.material = material
+              face.back_material = material
+            end
+            
+            true
           rescue => e
             puts "Error creating door panel: #{e.message}"
             nil
@@ -392,9 +725,16 @@ module MikMort
             # Create small marker cube for hardware placement
             marker_size = 0.5.inch
             
-            # Position marker
-            handle_z = door_z + door_height / 2 - marker_size / 2
-            handle_x = side == :left ? door_x + 2.inch : door_x + door_width - 2.inch - marker_size
+            # Position marker based on side
+            if side == :top_center
+              # Dishwasher: handle at top center
+              handle_z = door_z + door_height - 2.inch - marker_size
+              handle_x = door_x + door_width / 2 - marker_size / 2
+            else
+              # Regular door: handle at middle height on left or right
+              handle_z = door_z + door_height / 2 - marker_size / 2
+              handle_x = side == :left ? door_x + 2.inch : door_x + door_width - 2.inch - marker_size
+            end
             handle_y = door_y - marker_size
             
             # Create marker cube

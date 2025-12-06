@@ -45,9 +45,10 @@ module MikMort
         html_file = File.join(__dir__, '..', 'resources', 'dialog.html')
         html_content = File.read(html_file)
         puts "DEBUG: Loading HTML file: #{html_file}"
-        puts "DEBUG: HTML contains 'CONFIG GENERATION v2': #{html_content.include?('CONFIG GENERATION v2')}"
+        puts "DEBUG: HTML contains corner options: #{html_content.include?('inside_36')}"
         # Add timestamp to force reload
-        html_content.sub!('<head>', "<head><meta http-equiv='Cache-Control' content='no-cache, no-store, must-revalidate'><meta http-equiv='Pragma' content='no-cache'><meta http-equiv='Expires' content='0'>")
+        timestamp = Time.now.to_i
+        html_content.sub!('<head>', "<head><!-- Cache bust: #{timestamp} --><meta http-equiv='Cache-Control' content='no-cache, no-store, must-revalidate'><meta http-equiv='Pragma' content='no-cache'><meta http-equiv='Expires' content='0'>")
         @dialog.set_html(html_content)
         
         # Add callbacks
@@ -117,17 +118,39 @@ module MikMort
       # Create a new run
       def handle_create_run(json_params)
         require 'json'
-        params = JSON.parse(json_params)
+        puts "DEBUG: handle_create_run called with params: #{json_params}"
         
-        model = Sketchup.active_model
-        run_name = params['name'] || "Run #{Models::CabinetRunManager.all(model).length + 1}"
-        room_name = params['room_name'] || @current_room
-        
-        @current_run = Models::CabinetRunManager.new(model, run_name, room_name)
-        @current_room = room_name
-        
-        # Send updated run info back
-        @dialog.execute_script("receiveCurrentRun(#{@current_run.to_hash.to_json})")
+        begin
+          params = JSON.parse(json_params)
+          puts "DEBUG: Parsed params: #{params.inspect}"
+          
+          model = Sketchup.active_model
+          run_name = params['name'] || "Run #{Models::CabinetRunManager.all(model).length + 1}"
+          room_name = params['room_name'] || @current_room
+          run_type = (params['run_type'] || 'base').to_sym
+          
+          # Extract run properties
+          options = {
+            frame_type: params['frame_type'] || 'frameless',
+            has_countertop: params['has_countertop'] != false,
+            has_backsplash: params['has_backsplash'] != false
+          }
+          
+          puts "DEBUG: Creating run: name=#{run_name}, room=#{room_name}, type=#{run_type}, options=#{options}"
+          
+          @current_run = Models::CabinetRunManager.new(model, run_name, room_name, run_type, options)
+          @current_room = room_name
+          
+          puts "DEBUG: Run created successfully: #{@current_run.inspect}"
+          
+          # Send updated run list and set current run
+          runs = get_existing_runs
+          @dialog.execute_script("receiveExistingRuns(#{runs.to_json})")
+          @dialog.execute_script("receiveCurrentRun(#{@current_run.to_hash.to_json})")
+        rescue => e
+          puts "ERROR in handle_create_run: #{e.message}"
+          puts e.backtrace.first(5).join("\n")
+        end
       end
       
       # Select an existing run
@@ -181,24 +204,20 @@ module MikMort
           puts "DEBUG DECODED PARAMS: #{decoded_params[0..200]}"
           params = JSON.parse(decoded_params)
           room_name = params['room_name'] || @current_room
+          run_type = (params['run_type'] || 'base').to_sym
           
           # Ensure we have a current run
           unless @current_run && @current_run.group.valid?
             model = Sketchup.active_model
-            @current_run = Models::CabinetRunManager.find_or_create(model, "Run 1", room_name)
+            @current_run = Models::CabinetRunManager.find_or_create(model, "Run 1", room_name, run_type)
             @current_room = room_name
           end
           
           # Create the generator with the current run
           generator = Geometry::CabinetGenerator.new(Sketchup.active_model, room_name, @current_run)
           
-          if params['build_mode'] == 'single'
-            # Create single cabinet
-            create_single_cabinet(generator, params)
-          else
-            # Create cabinet run
-            create_cabinet_run(generator, params)
-          end
+          # Always create single cabinet (no build mode anymore)
+          create_single_cabinet(generator, params)
           
           # Close dialog after creation
           @dialog.close
@@ -208,12 +227,62 @@ module MikMort
         end
       end
       
+      # Map template + run_type to actual cabinet type
+      def map_template_to_type(template, run_type)
+        case template
+        when 'standard'
+          case run_type
+          when 'base' then :base
+          when 'wall' then :wall
+          when 'island' then :island
+          else :base
+          end
+        when 'dishwasher'
+          :base  # Dishwasher is just a base cabinet with special handle
+        when 'upper_42_12'
+          :wall_stack_9ft
+        when 'upper_42_12_12'
+          :wall_stack
+        when 'corner'
+          run_type == 'wall' ? :corner_wall : :corner_base
+        when 'tall'
+          :tall
+        when '3_door_graduated'
+          :base  # 3 doors with graduated sizing
+        else
+          :base
+        end
+      end
+      
+      # Build door/drawer config from template or individual parameters
+      def build_door_drawer_config_from_template(template)
+        case template
+        when '3_door_graduated'
+          return '3_doors_graduated'
+        else
+          return nil  # Use individual params
+        end
+      end
+      
+      # Build door/drawer config from template (returns nil if template doesn't specify)
+      def build_door_drawer_config_from_template(template)
+        case template
+        when 'dishwasher'
+          return :door  # Single door
+        when '3_door_graduated'
+          return '3_doors_graduated'
+        else
+          return nil  # Use individual params
+        end
+      end
+      
       # Build door/drawer config from individual parameters
       def build_door_drawer_config(door_count, drawer_count, drawer_sizing, layout_order)
         if door_count == 0 && drawer_count == 0
-          :doors  # Default
+          :doors  # Default (2 doors)
         elsif door_count > 0 && drawer_count == 0
-          :doors
+          # Doors only
+          door_count == 1 ? :door : :doors
         elsif door_count == 0 && drawer_count > 0
           # Drawers only
           if drawer_sizing == 'custom'
@@ -225,11 +294,14 @@ module MikMort
           end
         else
           # Both doors and drawers - use string with +
+          # For custom sizing, mark it so backend knows to use custom heights
+          drawer_config = drawer_sizing == 'custom' ? "#{drawer_count}_custom_drawers" : "#{drawer_count}_drawers"
+          door_config = door_count == 1 ? "door" : "#{door_count}_doors"
           # NOTE: Sections are built bottom-to-top, so reverse the order
           if layout_order == 'drawers_top'
-            "door+#{drawer_count}_drawers"  # Door first (bottom), drawers second (top)
+            "#{door_config}+#{drawer_config}"  # Door first (bottom), drawers second (top)
           else
-            "#{drawer_count}_drawers+door"  # Drawers first (bottom), door second (top)
+            "#{drawer_config}+#{door_config}"  # Drawers first (bottom), door second (top)
           end
         end
       end
@@ -239,7 +311,17 @@ module MikMort
         begin
           cabinet_params = params['cabinet']
           
+          # Get run type from params, or from active run for single mode
+          run_type = params['run_type']
+          if !run_type && generator && generator.current_run
+            # For single cabinet mode, get run type from active run
+            run_type = generator.current_run.run_type.to_s
+          end
+          run_type ||= 'base'
+          
           puts "\n=== DIALOG PARAMS RECEIVED ==="
+          puts "run_type: #{run_type}"
+          puts "template: #{cabinet_params['template']}"
           puts "door_count: #{cabinet_params['door_count']}"
           puts "drawer_count: #{cabinet_params['drawer_count']}"
           puts "drawer_sizing: #{cabinet_params['drawer_sizing']}"
@@ -247,17 +329,20 @@ module MikMort
           puts "custom_drawer_heights: #{cabinet_params['custom_drawer_heights'].inspect}"
           puts "============================\n"
           
-          # Convert string keys to symbols where needed
-          type = cabinet_params['type'].to_sym
+          # Map template + run_type to actual cabinet type
+          type = map_template_to_type(cabinet_params['template'], run_type)
           frame_type = cabinet_params['frame_type'].to_sym
           
-          # Build door/drawer config from individual parameters
-          door_count = cabinet_params['door_count'].to_i
-          drawer_count = cabinet_params['drawer_count'].to_i
-          drawer_sizing = cabinet_params['drawer_sizing'] || 'equal'
-          layout_order = cabinet_params['layout_order'] || 'drawers_top'
-          
-          config = build_door_drawer_config(door_count, drawer_count, drawer_sizing, layout_order)
+          # Build door/drawer config - check template first
+          config = build_door_drawer_config_from_template(cabinet_params['template'])
+          if !config
+            # Use individual parameters
+            door_count = cabinet_params['door_count'].to_i
+            drawer_count = cabinet_params['drawer_count'].to_i
+            drawer_sizing = cabinet_params['drawer_sizing'] || 'equal'
+            layout_order = cabinet_params['layout_order'] || 'drawers_top'
+            config = build_door_drawer_config(door_count, drawer_count, drawer_sizing, layout_order)
+          end
           puts "Built config: #{config.inspect}"
           
           # Create cabinet options hash
@@ -266,9 +351,11 @@ module MikMort
             width: cabinet_params['width'].to_f,
             depth: cabinet_params['depth'].to_f,
             height: cabinet_params['height'].to_f,
+            height_from_floor: cabinet_params['height_from_floor'].to_f,
             door_drawer_config: config,
             has_countertop: cabinet_params['has_countertop'],
-            has_backsplash: cabinet_params['has_backsplash']
+            has_backsplash: cabinet_params['has_backsplash'],
+            template: cabinet_params['template']  # Pass template so we can check for dishwasher
           }
           
           # Add custom drawer heights if provided
@@ -278,7 +365,9 @@ module MikMort
           
           # Add corner type if corner cabinet
           if type == :corner_base || type == :corner_wall
+            puts "DEBUG: Setting corner_type from params: #{cabinet_params['corner_type']}"
             options[:corner_type] = cabinet_params['corner_type'].to_sym
+            puts "DEBUG: corner_type symbol: #{options[:corner_type]}"
           end
           
           # Add seating side if island
@@ -289,6 +378,7 @@ module MikMort
           # Create the cabinet
           puts "Creating cabinet with options: #{options.inspect}"
           cabinet = Cabinet.new(type, options)
+          puts "Cabinet created: type=#{cabinet.type}, corner_type=#{cabinet.corner_type}, valid=#{cabinet.valid?}"
           
           # Handle run connection option
           run_option = params['run_connection'] || 'auto'

@@ -45,12 +45,12 @@ module MikMort
       WALL_STACK_9FT = {
         depth: 12.0,          # Same as wall cabinet
         lower_height: 42.0,   # Main upper door (42")
-        upper_stack_count: 1, # One stacked 12" drawer
-        upper_stack_height: 12.0, # Drawer is 12"
+        upper_stack_count: 1, # One stacked 12" door
+        upper_stack_height: 12.0, # Door is 12"
         total_height: 54.0,   # 42" + 12" = 54" total
         panel_thickness: 0.75,
         mounting_height: 54.0, # Same as standard wall
-        stack_reveal: 0.125   # Small reveal between sections
+        stack_reveal: 0.0     # No gap between sections
       }.freeze
       
       # Island Cabinet Standards
@@ -74,30 +74,60 @@ module MikMort
       
       # SubZero Panel-Ready Refrigerator Standards
       # Standard built-in dimensions (cabinet opening required)
+      # Cabinet enclosures are 84" tall to align with upper cabinets
       SUBZERO_FRIDGE = {
-        # 30" Built-In models (BI-30U, BI-30UG)
-        width_30: 30.0,
-        depth_30: 24.0,
-        height_30: 84.0,
+        # Classic Series (BI-30U, BI-36U, etc.) - has top vent/grill
+        classic: {
+          # 30" Built-In models (BI-30U, BI-30UG)
+          width_30: 30.0,
+          depth_30: 24.0,
+          height_30: 84.0,
+          
+          # 36" Built-In models (BI-36U, BI-36UG, BI-36UFD)
+          width_36: 36.0,
+          depth_36: 24.0,
+          height_36: 84.0,
+          
+          # 42" Built-In models (BI-42U, BI-42UG, BI-42SD)
+          width_42: 42.0,
+          depth_42: 24.0,
+          height_42: 84.0,
+          
+          # 48" Built-In models (BI-48SD, BI-48SID)
+          width_48: 48.0,
+          depth_48: 24.0,
+          height_48: 84.0,
+          
+          clearance_top: 1.0    # Top clearance for ventilation grille
+        },
         
-        # 36" Built-In models (BI-36U, BI-36UG, BI-36UFD)
-        width_36: 36.0,
-        depth_36: 24.0,
-        height_36: 84.0,
-        
-        # 42" Built-In models (BI-42U, BI-42UG, BI-42SD)
-        width_42: 42.0,
-        depth_42: 24.0,
-        height_42: 84.0,
-        
-        # 48" Built-In models (BI-48SD, BI-48SID)
-        width_48: 48.0,
-        depth_48: 24.0,
-        height_48: 84.0,
+        # Designer Series (IT-30, IT-36, etc.) - no top vent, flush design
+        designer: {
+          # 30" Built-In models (IT-30CI, IT-30FI)
+          width_30: 30.0,
+          depth_30: 24.0,
+          height_30: 84.0,      # Same cabinet height, flush with uppers
+          
+          # 36" Built-In models (IT-36CI, IT-36FI, IT-36CIID)
+          width_36: 36.0,
+          depth_36: 24.0,
+          height_36: 84.0,      # Same cabinet height, flush with uppers
+          
+          # 42" Built-In models (IT-42CI, IT-42SD)
+          width_42: 42.0,
+          depth_42: 24.0,
+          height_42: 84.0,      # Same cabinet height, flush with uppers
+          
+          # 48" Built-In models (IT-48SD, IT-48SID)
+          width_48: 48.0,
+          depth_48: 24.0,
+          height_48: 84.0,      # Same cabinet height, flush with uppers
+          
+          clearance_top: 0.0    # No top clearance needed (appliance is taller)
+        },
         
         panel_thickness: 0.75,
         toe_kick_height: 0.0,  # No toe kick for built-in fridges
-        clearance_top: 1.0,    # Top clearance for ventilation
         clearance_back: 2.0    # Back clearance for compressor/coils
       }.freeze
       
@@ -110,6 +140,19 @@ module MikMort
         panel_thickness: 0.75,
         toe_kick_height: 4.0, # Matches base cabinet toe kick
         clearance_back: 1.0   # Back clearance for hoses/connections
+      }.freeze
+      
+      # Wall Oven/Microwave Placeholder
+      # Standard 24" single or double wall oven opening
+      WALL_OVEN = {
+        width: 24.0,          # Standard wall oven width (also 27" and 30" available)
+        depth: 24.0,          # Standard depth (matches tall cabinets)
+        height_single: 28.0,  # Single oven opening height
+        height_double: 50.0,  # Double oven opening height
+        height_micro: 15.0,   # Microwave opening height
+        clearance_back: 2.0,  # Back clearance for venting
+        clearance_sides: 0.5, # Side clearance
+        clearance_top: 1.0    # Top clearance for ventilation
       }.freeze
       
       # Generic Range/Cooktop Placeholder
@@ -195,14 +238,15 @@ module MikMort
         :floating,
         :subzero_fridge,
         :miele_dishwasher,
-        :range
+        :range,
+        :wall_oven
       ].freeze
       
       # Frame Types
       FRAME_TYPES = [:framed, :frameless].freeze
       
       # Corner Types
-      CORNER_TYPES = [:blind, :lazy_susan, :diagonal].freeze
+      CORNER_TYPES = [:inside_36, :inside_24, :outside_36, :outside_24].freeze
       
       # Room Presets with default configurations
       ROOM_PRESETS = {
@@ -232,7 +276,8 @@ module MikMort
       # Material color defaults (for visualization before TwinMotion)
       MATERIAL_COLORS = {
         box_wood: [139, 90, 43],        # Brown wood tone
-        door_face: [160, 120, 80],      # Lighter wood tone
+        door_face: [210, 180, 140],     # Light brown/tan (legacy)
+        finished_surface: [210, 180, 140], # Light brown/tan - all exposed cabinet surfaces
         countertop: [240, 240, 235],    # Off-white marble
         hardware: [180, 180, 180],      # Brushed metal gray
         interior: [245, 235, 220]       # Light interior

@@ -33,12 +33,22 @@ module MikMort
         get_material('Box')
       end
       
+      def carcass_material
+        get_material('Box')  # Alias for box_material
+      end
+      
+      # Unified material for all finished/exposed cabinet surfaces
+      def finished_surface_material
+        get_material('FinishedSurface')
+      end
+      
+      # Legacy methods - now all point to finished_surface_material for consistency
       def door_face_material
-        get_material('DoorFace')
+        finished_surface_material
       end
       
       def drawer_face_material
-        get_material('DrawerFace')
+        finished_surface_material
       end
       
       def interior_material
@@ -64,8 +74,8 @@ module MikMort
         color = case material_type
         when 'Box'
           Constants::MATERIAL_COLORS[:box_wood]
-        when 'DoorFace', 'DrawerFace'
-          Constants::MATERIAL_COLORS[:door_face]
+        when 'FinishedSurface', 'DoorFace', 'DrawerFace'
+          Constants::MATERIAL_COLORS[:finished_surface]
         when 'Interior'
           Constants::MATERIAL_COLORS[:interior]
         when 'Countertop'

@@ -41,8 +41,6 @@ module MikMort
             # Determine position (either specified or next in run)
             position = options[:position] || @current_run.next_position
             
-            puts "DEBUG: Creating cabinet at position: #{position.inspect}"
-            
             # Create temporary groups for building
             temp_group = @model.active_entities.add_group
             
@@ -58,24 +56,75 @@ module MikMort
             countertop_group = nil
             backsplash_group = nil
             
-            # Build cabinet components
-            @box_builder.build(cabinet, carcass_group)
-            @door_drawer_builder.build(cabinet, fronts_group, hardware_group)
-            
-            # Build countertop and backsplash if specified
-            if cabinet.has_countertop
-              countertop_group = temp_group.entities.add_group
-              countertop_group.name = "Countertop_temp"
-              backsplash_group = temp_group.entities.add_group
-              backsplash_group.name = "Backsplash_temp"
-              @countertop_builder.build_separate(cabinet, countertop_group, backsplash_group)
+            # Special handling for range placeholders - build into temporary group, then move to appliances
+            if cabinet.type == :range
+              # Ensure appliances_group exists first
+              if !@current_run.appliances_group || !@current_run.appliances_group.valid?
+                @current_run.instance_variable_set(:@appliances_group, 
+                  @current_run.send(:create_subgroup, 'Appliances', 'appliances'))
+              end
+              
+              # Build range geometry directly into appliances_group (not at model level)
+              # This avoids all the transformation complexity
+              
+              # Build directly into the appliances group entities collection
+              @box_builder.build(cabinet, @current_run.appliances_group.entities, position)
+              
+              # Clean up temp group
+              temp_group.erase! if temp_group.valid?
+            else
+              # Build cabinet components into temp groups
+              @box_builder.build(cabinet, carcass_group)
+              @door_drawer_builder.build(cabinet, fronts_group, hardware_group)
+              
+              # Build countertop and backsplash if specified
+              if cabinet.has_countertop
+                countertop_group = temp_group.entities.add_group
+                countertop_group.name = "Countertop_temp"
+                backsplash_group = temp_group.entities.add_group
+                backsplash_group.name = "Backsplash_temp"
+                @countertop_builder.build_separate(cabinet, countertop_group, backsplash_group)
+              end
+              
+              # For wall cabinets, adjust Z position based on height_from_floor
+              # and Y position to align backs when depths differ
+              final_position = position
+              if cabinet.type == :wall || cabinet.type == :corner_wall || cabinet.type == :wall_stack_9ft || cabinet.type == :wall_stack
+                z_offset = cabinet.height_from_floor.inch
+                
+                # Align wall cabinets by their backs instead of fronts
+                # Cabinet back should be against wall - align all cabinet backs to same Y coordinate
+                y_offset = 0
+                if @current_run.last_cabinet_depth
+                  puts "DEBUG: Cabinet depth=#{cabinet.depth}\", Reference depth=#{@current_run.last_cabinet_depth}\""
+                  if cabinet.depth < @current_run.last_cabinet_depth
+                    # Shallower cabinet - move back so front is recessed
+                    # If ref is 24" at Y=0 (back at 24"), and this is 15" 
+                    # We want this cabinet's back also at 24", so front at Y=9"
+                    # BUT: Since position.y is already 0, we ADD the difference
+                    y_offset = (@current_run.last_cabinet_depth - cabinet.depth).inch
+                    puts "DEBUG: Shallower cabinet - offset by +#{y_offset / 1.inch}\" so front at Y=#{(position.y + y_offset) / 1.inch}\", back at Y=#{(position.y + y_offset + cabinet.depth.inch) / 1.inch}\""
+                  elsif cabinet.depth > @current_run.last_cabinet_depth
+                    puts "DEBUG: Deeper cabinet (#{cabinet.depth}\" > #{@current_run.last_cabinet_depth}\") - updating reference"
+                    @current_run.last_cabinet_depth = cabinet.depth
+                  else
+                    puts "DEBUG: Same depth (#{cabinet.depth}\") - no offset"
+                  end
+                else
+                  puts "DEBUG: First wall cabinet, depth=#{cabinet.depth}\", reference set (back at Y=#{cabinet.depth}\")"
+                  @current_run.last_cabinet_depth = cabinet.depth
+                end
+                
+                final_position = Geom::Point3d.new(position.x, position.y + y_offset, z_offset)
+                puts "DEBUG: Position - X=#{position.x / 1.inch}\", Y=#{(position.y + y_offset) / 1.inch}\", Z=#{z_offset / 1.inch}\", cabinet back will be at Y=#{(position.y + y_offset + cabinet.depth.inch) / 1.inch}\""
+              end
+              
+              # Move components into run's sub-groups
+              move_to_run_groups(carcass_group, fronts_group, hardware_group, countertop_group, backsplash_group, final_position)
+              
+              # Clean up temporary group
+              temp_group.erase! if temp_group.valid?
             end
-            
-            # Move components into run's sub-groups
-            move_to_run_groups(carcass_group, fronts_group, hardware_group, countertop_group, backsplash_group, position)
-            
-            # Clean up temporary group
-            temp_group.erase! if temp_group.valid?
             
             @model.commit_operation
             true
@@ -153,14 +202,16 @@ module MikMort
           temp_box.transformation = transformation
           temp_box.explode  # Merge geometry into parent carcass group
           
-          # Create a temporary group for fronts, then explode it
-          temp_fronts = fronts_group.entities.add_group
-          temp_hardware = hardware_group.entities.add_group
-          @door_drawer_builder.build(cabinet, temp_fronts, temp_hardware)
-          temp_fronts.transformation = transformation
-          temp_hardware.transformation = transformation
-          temp_fronts.explode  # Merge geometry into parent fronts group
-          temp_hardware.explode  # Merge geometry into parent hardware group
+          # Create a sub-group for this cabinet's fronts (DON'T explode to preserve materials)
+          cabinet_fronts = fronts_group.entities.add_group
+          cabinet_fronts.name = "Cabinet_#{cabinet.type}_Fronts"
+          cabinet_hardware = hardware_group.entities.add_group
+          cabinet_hardware.name = "Cabinet_#{cabinet.type}_Hardware"
+          
+          @door_drawer_builder.build(cabinet, cabinet_fronts, cabinet_hardware)
+          cabinet_fronts.transformation = transformation
+          cabinet_hardware.transformation = transformation
+          # Don't explode - keep groups intact to preserve face materials
           
           # Note: Countertop is added separately for the whole run
         end
@@ -335,38 +386,26 @@ module MikMort
         def move_to_run_groups(carcass, fronts, hardware, countertop, backsplash, position)
           transformation = Geom::Transformation.translation(position.to_a.map { |v| v.to_f.inch })
           
-          # Helper to transfer all geometry from source group to target group
-          transfer_geometry = lambda do |source_group, target_group|
+          # Helper to transfer geometry by moving the source group directly into target
+          transfer_geometry = lambda do |source_group, target_group, name|
             return unless source_group && source_group.valid? && source_group.entities.length > 0
+            return unless target_group && target_group.valid?
             
-            # Copy all entities to target group with transformation applied
-            entities_to_copy = source_group.entities.to_a
-            entities_to_copy.each do |entity|
-              next unless entity.valid?
-              
-              if entity.is_a?(Sketchup::Group) || entity.is_a?(Sketchup::ComponentInstance)
-                # For groups/components, add instance with transformation
-                combined_transform = transformation * entity.transformation
-                target_group.entities.add_instance(entity.definition, combined_transform)
-              elsif entity.is_a?(Sketchup::Face)
-                # For faces, transform vertices and add to target
-                points = entity.vertices.map { |v| v.position.transform(transformation) }
-                new_face = target_group.entities.add_face(points)
-                new_face.material = entity.material if entity.material
-                new_face.back_material = entity.back_material if entity.back_material
-              elsif entity.is_a?(Sketchup::Edge)
-                # Edges will be created automatically with faces
-                # or we can add them explicitly if needed
-              end
+            begin
+              # Convert source group to a component, then place an instance in target
+              definition = source_group.definition
+              target_group.entities.add_instance(definition, transformation)
+            rescue => e
+              puts "ERROR transferring #{name}: #{e.message}"
             end
           end
           
           # Transfer entities to run's sub-groups
-          transfer_geometry.call(carcass, @current_run.carcass_group)
-          transfer_geometry.call(fronts, @current_run.faces_group)
-          transfer_geometry.call(hardware, @current_run.hardware_group)
-          transfer_geometry.call(countertop, @current_run.countertops_group)
-          transfer_geometry.call(backsplash, @current_run.backsplash_group)
+          transfer_geometry.call(carcass, @current_run.carcass_group, "carcass")
+          transfer_geometry.call(fronts, @current_run.faces_group, "fronts")
+          transfer_geometry.call(hardware, @current_run.hardware_group, "hardware")
+          transfer_geometry.call(countertop, @current_run.countertops_group, "countertop")
+          transfer_geometry.call(backsplash, @current_run.backsplash_group, "backsplash")
         end
         
       end

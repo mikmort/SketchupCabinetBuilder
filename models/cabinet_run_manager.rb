@@ -6,18 +6,29 @@ module MikMort
     module Models
       
       class CabinetRunManager
-        attr_accessor :name, :room_name
+        attr_accessor :name, :room_name, :run_type, :frame_type, :has_countertop, :has_backsplash
         attr_reader :id, :group
         
         # Sub-groups within the run
-        attr_reader :faces_group, :carcass_group, :countertops_group, :hardware_group, :backsplash_group
+        attr_reader :faces_group, :carcass_group, :countertops_group, :hardware_group, :backsplash_group, :appliances_group
         
-        def initialize(model, name, room_name = nil)
+        # Track last cabinet depth for alignment
+        attr_accessor :last_cabinet_depth
+        
+        def initialize(model, name, room_name = nil, run_type = :base, options = {})
           @model = model
           @id = generate_id
           @name = name
           @room_name = room_name || "Kitchen"
+          @run_type = run_type
+          @frame_type = options[:frame_type] || 'frameless'
+          @has_countertop = options.key?(:has_countertop) ? options[:has_countertop] : true
+          @has_backsplash = options.key?(:has_backsplash) ? options[:has_backsplash] : true
           @sections = []
+          @last_cabinet_depth = nil
+          
+          # Calculate offset position for new run (6' behind existing runs)
+          offset_y = calculate_run_offset(model)
           
           # Create the main run group
           @group = @model.active_entities.add_group
@@ -26,7 +37,16 @@ module MikMort
           @group.set_attribute('CabinetBuilder', 'run_id', @id)
           @group.set_attribute('CabinetBuilder', 'run_name', @name)
           @group.set_attribute('CabinetBuilder', 'room_name', @room_name)
+          @group.set_attribute('CabinetBuilder', 'run_type', @run_type.to_s)
+          @group.set_attribute('CabinetBuilder', 'frame_type', @frame_type)
+          @group.set_attribute('CabinetBuilder', 'has_countertop', @has_countertop)
+          @group.set_attribute('CabinetBuilder', 'has_backsplash', @has_backsplash)
           @group.set_attribute('CabinetBuilder', 'created_at', Time.now.to_i)
+          
+          # Position the run group
+          if offset_y != 0
+            @group.transformation = Geom::Transformation.translation([0, offset_y.inch, 0])
+          end
           
           # Create sub-groups
           create_subgroups
@@ -43,6 +63,10 @@ module MikMort
           run.instance_variable_set(:@id, group.get_attribute('CabinetBuilder', 'run_id'))
           run.instance_variable_set(:@name, group.get_attribute('CabinetBuilder', 'run_name'))
           run.instance_variable_set(:@room_name, group.get_attribute('CabinetBuilder', 'room_name') || 'Kitchen')
+          run.instance_variable_set(:@run_type, (group.get_attribute('CabinetBuilder', 'run_type') || 'base').to_sym)
+          run.instance_variable_set(:@frame_type, group.get_attribute('CabinetBuilder', 'frame_type') || 'frameless')
+          run.instance_variable_set(:@has_countertop, group.get_attribute('CabinetBuilder', 'has_countertop', true))
+          run.instance_variable_set(:@has_backsplash, group.get_attribute('CabinetBuilder', 'has_backsplash', true))
           run.instance_variable_set(:@sections, [])
           
           # Find sub-groups
@@ -73,18 +97,42 @@ module MikMort
         end
         
         # Find or create a run
-        def self.find_or_create(model, name, room_name = nil)
-          find_by_name(model, name, room_name) || new(model, name, room_name)
+        def self.find_or_create(model, name, room_name = nil, run_type = :base)
+          find_by_name(model, name, room_name) || new(model, name, room_name, run_type)
         end
         
         # Get the next position for a cabinet in this run
         def next_position
-          # Find the rightmost point in the carcass group
-          return Geom::Point3d.new(0, 0, 0) if @carcass_group.entities.length == 0
+          # Reload subgroups to ensure we have valid references (they can become stale between operations)
+          load_subgroups
           
-          # Calculate bounds of the entire carcass group
-          bounds = @carcass_group.bounds
-          max_x = bounds.valid? ? bounds.max.x : 0
+          # Find the rightmost point across all groups (carcass and appliances)
+          max_x = 0
+          
+          # Check carcass group
+          if @carcass_group && @carcass_group.valid?
+            begin
+              carcass_bounds = @carcass_group.bounds
+              if carcass_bounds.valid?
+                max_x = carcass_bounds.max.x
+              end
+            rescue => e
+              # Ignore errors reading carcass bounds
+            end
+          end
+          
+          # Check appliances group (for ranges, etc.)
+          if @appliances_group && @appliances_group.valid?
+            begin
+              appliances_bounds = @appliances_group.bounds
+              if appliances_bounds.valid? && appliances_bounds.max.x > 0
+                appliances_max = appliances_bounds.max.x
+                max_x = [max_x, appliances_max].max
+              end
+            rescue => e
+              # Ignore errors reading appliances bounds
+            end
+          end
           
           Geom::Point3d.new(max_x, 0, 0)
         end
@@ -152,6 +200,10 @@ module MikMort
             id: @id,
             name: @name,
             room_name: @room_name,
+            run_type: @run_type.to_s,
+            frame_type: @frame_type,
+            has_countertop: @has_countertop,
+            has_backsplash: @has_backsplash,
             section_count: section_count
           }
         end
@@ -169,6 +221,8 @@ module MikMort
               @backsplash_group = subgroup
             when 'hardware'
               @hardware_group = subgroup
+            when 'appliances'
+              @appliances_group = subgroup
             end
           end
           
@@ -178,12 +232,22 @@ module MikMort
           @countertops_group ||= create_subgroup('Countertops', 'countertops')
           @backsplash_group ||= create_subgroup('Backsplash', 'backsplash')
           @hardware_group ||= create_subgroup('Hardware', 'hardware')
+          @appliances_group ||= create_subgroup('Appliances', 'appliances')
         end
         
         private
         
         def generate_id
           "run_#{Time.now.to_i}_#{rand(10000)}"
+        end
+        
+        # Calculate Y offset for new run (6' behind each existing run)
+        def calculate_run_offset(model)
+          existing_runs = self.class.all(model)
+          return 0 if existing_runs.empty?
+          
+          # Each run gets positioned 6' (72") behind the previous one
+          existing_runs.length * -72
         end
         
         def create_subgroups
@@ -193,6 +257,7 @@ module MikMort
           @backsplash_group = create_subgroup('Backsplash', 'backsplash')
           @faces_group = create_subgroup('Faces', 'faces')
           @hardware_group = create_subgroup('Hardware', 'hardware')
+          @appliances_group = create_subgroup('Appliances', 'appliances')
         end
         
         def create_subgroup(name, type)

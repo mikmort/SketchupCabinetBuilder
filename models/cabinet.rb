@@ -8,7 +8,8 @@ module MikMort
       
       attr_accessor :type, :frame_type, :width, :depth, :height
       attr_accessor :door_drawer_config, :has_countertop, :has_backsplash
-      attr_accessor :corner_type, :has_seating_side, :position
+      attr_accessor :corner_type, :has_seating_side, :position, :height_from_floor
+      attr_accessor :options
       
       # Initialize a new cabinet
       # @param type [Symbol] :base, :wall, :island, :tall, :corner_base, :corner_wall, :floating
@@ -16,14 +17,24 @@ module MikMort
       def initialize(type, options = {})
         @type = type
         @frame_type = options[:frame_type] || :frameless
+        @options = options
+        
+        # Corner specific - set before default dimensions so size is correct
+        @corner_type = options[:corner_type] # :inside_36, :inside_24, :outside_36, :outside_24
         
         # Set default dimensions based on type
         set_default_dimensions
         
         # Override with custom dimensions if provided
-        @width = options[:width] || @width
-        @depth = options[:depth] || @depth
+        # BUT NOT for corner cabinets - their dimensions are determined by corner_type
+        unless @type == :corner_base || @type == :corner_wall
+          @width = options[:width] || @width
+          @depth = options[:depth] || @depth
+        end
         @height = options[:height] || @height
+        
+        # Wall cabinet positioning
+        @height_from_floor = options[:height_from_floor] || 54.0
         
         # Door/Drawer configuration
         # Can be: :doors, :drawers, or mixed like "2 drawers + door"
@@ -32,9 +43,6 @@ module MikMort
         # Countertop and backsplash
         @has_countertop = options[:has_countertop] || false
         @has_backsplash = options[:has_backsplash] || false
-        
-        # Corner specific
-        @corner_type = options[:corner_type] # :blind, :lazy_susan, :diagonal
         
         # Island specific
         @has_seating_side = options[:has_seating_side] || false
@@ -81,10 +89,15 @@ module MikMort
         when :base, :island, :corner_base, :miele_dishwasher
           @height - Constants::BASE_CABINET[:toe_kick_height]
         when :subzero_fridge
-          # Full height minus top clearance for ventilation
-          @height - Constants::SUBZERO_FRIDGE[:clearance_top]
+          # Full height minus top clearance for ventilation (series-specific)
+          series = @options[:series] || :classic
+          clearance = Constants::SUBZERO_FRIDGE[series][:clearance_top]
+          @height - clearance
         when :range
           # Full height (no reduction for ranges)
+          @height
+        when :wall_oven
+          # Full height for tall cabinet with oven
           @height
         else
           @height
@@ -119,8 +132,8 @@ module MikMort
       # Check if config is a known simple config (not mixed like "2 drawers + door")
       def is_simple_config?(config_sym)
         simple_configs = [
-          :doors, :'1_drawer', :'2_drawers', :drawers, :'3_drawers', :'4_drawers', :'5_drawers',
-          :'3_equal_drawers', :'4_equal_drawers', :'1_drawer+door', :'2_drawers+door',
+          :door, :doors, :'1_drawer', :'2_drawers', :drawers, :'3_drawers', :'4_drawers', :'5_drawers',
+          :'2_equal_drawers', :'3_equal_drawers', :'4_equal_drawers', :'1_drawer+door', :'2_drawers+door',
           :drawer_bank_3, :drawer_bank_4
         ]
         simple_configs.include?(config_sym)
@@ -154,26 +167,46 @@ module MikMort
           @depth = Constants::TALL_CABINET[:depth]
           @height = Constants::TALL_CABINET[:height]
         when :corner_base
-          @width = Constants::CORNER[:blind_width]
-          @depth = Constants::CORNER[:blind_width]
+          # Size based on corner_type
+          corner_size = case @corner_type
+          when :inside_36, :outside_36, 'inside_36', 'outside_36' then 36.0
+          when :inside_24, :outside_24, 'inside_24', 'outside_24' then 24.0
+          else 36.0
+          end
+          @width = corner_size
+          @depth = Constants::BASE_CABINET[:depth]
           @height = Constants::BASE_CABINET[:height]
         when :corner_wall
-          @width = Constants::CORNER[:blind_width]
-          @depth = Constants::CORNER[:blind_width]
+          # Size based on corner_type
+          corner_size = case @corner_type
+          when :inside_36, :outside_36, 'inside_36', 'outside_36' then 36.0
+          when :inside_24, :outside_24, 'inside_24', 'outside_24' then 24.0
+          else 36.0
+          end
+          @width = corner_size
+          @depth = Constants::WALL_CABINET[:depth]
           @height = Constants::WALL_CABINET[:height_standard]
         when :floating
           @width = 24.0
           @depth = Constants::WALL_CABINET[:depth]
           @height = 36.0
         when :subzero_fridge
-          # Default to 36" model (most common)
-          @width = Constants::SUBZERO_FRIDGE[:width_36]
-          @depth = Constants::SUBZERO_FRIDGE[:depth_36]
-          @height = Constants::SUBZERO_FRIDGE[:height_36]
+          # Default to 36" Classic series model (most common)
+          series = @options[:series] || :classic
+          series_data = Constants::SUBZERO_FRIDGE[series]
+          @width = series_data[:width_36]
+          @depth = series_data[:depth_36]
+          @height = series_data[:height_36]
         when :miele_dishwasher
           @width = Constants::MIELE_DISHWASHER[:width]
           @depth = Constants::MIELE_DISHWASHER[:depth]
           @height = Constants::MIELE_DISHWASHER[:height]
+        
+        when :wall_oven
+          # Default to tall cabinet with single oven opening
+          @width = Constants::WALL_OVEN[:width]
+          @depth = Constants::TALL_CABINET[:depth]
+          @height = Constants::TALL_CABINET[:height]
         when :range
           # Default to 30" range (most common)
           @width = Constants::RANGE[:width_30]
@@ -185,11 +218,17 @@ module MikMort
       # Parse simple configuration (all doors or all drawers)
       def parse_simple_config(config)
         case config
+        when :door
+          [{type: :door, ratio: 1.0, count: 1}] # Single door
         when :doors
-          [{type: :door, ratio: 1.0, count: 2}] # Two doors by default
+          # Check if single_door option is set (for split fridge/freezer units)
+          door_count = (@options && @options[:single_door]) ? 1 : 2
+          [{type: :door, ratio: 1.0, count: door_count}]
+        when :'3_doors_graduated'
+          [{type: :door, ratio: 1.0, count: 3}] # Three doors (graduated widths small to large)
         when :'1_drawer'
           [{type: :drawer, ratio: 1.0, count: 1, equal_sizing: true}] # Single large drawer
-        when :'2_drawers'
+        when :'2_drawers', :'2_equal_drawers'
           [{type: :drawer, ratio: 1.0, count: 2, equal_sizing: true}] # Two equal drawers
         when :drawers, :'3_drawers'
           [{type: :drawer, ratio: 1.0, count: 3, equal_sizing: false}] # Three graduated drawers
@@ -216,31 +255,58 @@ module MikMort
         end
       end
       
-      # Parse mixed configuration string like "2 drawers + door"
+      # Parse mixed configuration string like "2 drawers + door" or "door+1_custom_drawers"
       def parse_mixed_config(config_string)
         puts "DEBUG parse_mixed_config: input=#{config_string.inspect}"
         sections = []
         parts = config_string.downcase.split('+').map(&:strip)
         puts "DEBUG: split parts=#{parts.inspect}"
         
-        # Calculate total ratio
-        total_parts = parts.length
+        # Check if we have custom drawer heights
+        custom_heights = @options && @options[:custom_drawer_heights]
+        has_custom = parts.any? { |p| p.include?('custom') }
         
-        parts.each_with_index do |part, index|
-          if part.include?('drawer')
-            # Extract number if present (e.g., "2 drawers")
-            count = part.match(/(\d+)/)
-            count = count ? count[1].to_i : 1
-            
-            # Equal distribution for now
-            ratio = 1.0 / total_parts
-            sections << {type: :drawer, ratio: ratio, count: count}
-          elsif part.include?('door')
-            count = part.match(/(\d+)/)
-            count = count ? count[1].to_i : 2 # Default 2 doors
-            
-            ratio = 1.0 / total_parts
-            sections << {type: :door, ratio: ratio, count: count}
+        # Calculate ratios based on custom heights if available
+        if has_custom && custom_heights && !custom_heights.empty?
+          # Calculate total height from custom drawer heights
+          total_drawer_height = custom_heights.sum
+          available_height = interior_height
+          
+          parts.each do |part|
+            if part.include?('drawer')
+              # Extract number of drawers
+              count = part.match(/(\d+)/)
+              count = count ? count[1].to_i : 1
+              
+              ratio = total_drawer_height / available_height
+              sections << {type: :drawer, ratio: ratio, count: count, custom_heights: true}
+            elsif part.include?('door')
+              count = part.match(/(\d+)/)
+              count = count ? count[1].to_i : 1 # Default 1 door when mixed
+              
+              # Door gets the remaining height
+              ratio = 1.0 - (total_drawer_height / available_height)
+              sections << {type: :door, ratio: ratio, count: count}
+            end
+          end
+        else
+          # Equal distribution when no custom heights
+          total_parts = parts.length
+          
+          parts.each do |part|
+            if part.include?('drawer')
+              count = part.match(/(\d+)/)
+              count = count ? count[1].to_i : 1
+              
+              ratio = 1.0 / total_parts
+              sections << {type: :drawer, ratio: ratio, count: count}
+            elsif part.include?('door')
+              count = part.match(/(\d+)/)
+              count = count ? count[1].to_i : 1 # Default 1 door when mixed
+              
+              ratio = 1.0 / total_parts
+              sections << {type: :door, ratio: ratio, count: count}
+            end
           end
         end
         

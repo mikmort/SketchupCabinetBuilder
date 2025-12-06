@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cabinet Builder</title>
+    <!-- VERSION: NEW_RUN_FIXED_2024 -->
     <style>
         * {
             margin: 0;
@@ -243,110 +244,51 @@
             <label>Current Cabinet Run</label>
             <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
                 <select id="current_run" style="flex: 1;">
-                    <option value="">Select or create a run...</option>
+                    <option value="">Select a run...</option>
                 </select>
-                <button type="button" id="new_run_btn" class="btn-secondary" style="flex: 0 0 auto; padding: 6px 12px;">New</button>
+                <button type="button" id="new_run_btn" class="btn-secondary" style="flex: 0 0 auto; padding: 6px 12px;">New Run</button>
             </div>
             <div id="run_info" style="font-size: 11px; color: #666; display: none;">
-                <span id="run_section_count"></span> sections
-            </div>
-        </div>
-        
-        <!-- Room Information -->
-        <div class="section">
-            <label for="room_name">Room Name</label>
-            <input type="text" id="room_name" placeholder="e.g., Kitchen, Master Bath" value="Kitchen">
-            <p class="help-text">Used for material naming in TwinMotion</p>
-            
-            <label>Room Preset</label>
-            <div class="preset-buttons">
-                <button type="button" class="preset-btn active" data-preset="kitchen">Kitchen</button>
-                <button type="button" class="preset-btn" data-preset="bathroom">Bathroom</button>
-                <button type="button" class="preset-btn" data-preset="closet">Closet</button>
-            </div>
-            <input type="hidden" id="room_preset" value="kitchen">
-        </div>
-        
-        <!-- Build Mode -->
-        <div class="section">
-            <label>Build Mode</label>
-            <div class="radio-group">
-                <label>
-                    <input type="radio" name="build_mode" value="single" checked>
-                    Single Cabinet
-                </label>
-                <label>
-                    <input type="radio" name="build_mode" value="run">
-                    Cabinet Run
-                </label>
-            </div>
-        </div>
-        
-        <!-- Run Connection Options (for single cabinet mode) -->
-        <div id="run_connection_options" class="section">
-            <label>Cabinet Run Connection</label>
-            <div class="radio-group" style="flex-direction: column; gap: 8px;">
-                <label>
-                    <input type="radio" name="run_connection" value="auto" checked>
-                    Auto (extend nearest run)
-                </label>
-                <label>
-                    <input type="radio" name="run_connection" value="new_run">
-                    Create new run
-                </label>
-                <label>
-                    <input type="radio" name="run_connection" value="extend_run">
-                    Extend specific run
-                </label>
-            </div>
-            
-            <div id="run_selector" style="display: none; margin-top: 12px;">
-                <label for="target_run">Select Run to Extend</label>
-                <select id="target_run">
-                    <option value="">-- No runs available --</option>
-                </select>
+                <span id="run_section_count"></span> | 
+                <span id="run_frame_type_display"></span> | 
+                <span id="run_countertop_display"></span> | 
+                <span id="run_backsplash_display"></span>
             </div>
         </div>
         
         <!-- Single Cabinet Options -->
         <div id="single_cabinet_options" class="section">
-            <label for="cabinet_type">Cabinet Type</label>
-            <select id="cabinet_type">
-                <option value="base">Base Cabinet</option>
-                <option value="wall">Wall Cabinet</option>
-                <option value="wall_stack_9ft">Upper 42"+12</option>
-                <option value="wall_stack">Upper 42"+12+12</option>
-                <option value="island">Island</option>
+            <label for="cabinet_template">Cabinet Template</label>
+            <select id="cabinet_template" onchange="handleTemplateChange(this.value)">
+                <option value="standard" selected>Standard</option>
+                <option value="dishwasher" data-run-type="base">Dishwasher</option>
+                <option value="upper_42_12" data-run-type="wall">Upper 42"+12"</option>
+                <option value="upper_42_12_12" data-run-type="wall">Upper 42"+12"+12"</option>
+                <option value="corner">Corner</option>
                 <option value="tall">Tall/Pantry</option>
-                <option value="corner_base">Corner Base</option>
-                <option value="corner_wall">Corner Wall</option>
-                <option value="floating">Floating</option>
-            </select>
-            
-            <label for="frame_type">Frame Type</label>
-            <select id="frame_type">
-                <option value="frameless">Frameless</option>
-                <option value="framed">Framed</option>
+                <option value="3_door_graduated" data-run-type="base">3 Door Graduated</option>
             </select>
             
             <div class="inline-group-3">
-                <div>
+                <div id="width_container">
                     <label for="width">Width (in)</label>
                     <select id="width">
                         <option value="9">9"</option>
                         <option value="12">12"</option>
                         <option value="15">15"</option>
                         <option value="18">18"</option>
+                        <option value="21">21"</option>
                         <option value="24" selected>24"</option>
                         <option value="30">30"</option>
+                        <option value="33">33"</option>
                         <option value="36">36"</option>
                         <option value="42">42"</option>
                         <option value="48">48"</option>
                         <option value="custom">Custom</option>
                     </select>
-                    <input type="number" id="width_custom" style="display:none;" placeholder="Width">
+                    <input type="number" id="width_custom" placeholder="Width" step="0.5" min="1">
                 </div>
-                <div>
+                <div id="depth_container">
                     <label for="depth">Depth (in)</label>
                     <input type="number" id="depth" value="24" step="0.5">
                 </div>
@@ -356,24 +298,30 @@
                 </div>
             </div>
             
+            <div id="wall_cabinet_height_options" style="display: none; margin-bottom: 12px;">
+                <label for="height_from_floor">Height from Floor (in)</label>
+                <input type="number" id="height_from_floor" value="54" step="0.5">
+                <p class="help-text">Distance from floor to bottom of wall cabinet</p>
+            </div>
+            
             <label>Cabinet Configuration</label>
             
             <div class="inline-group-2">
                 <div>
                     <label for="door_count">Doors</label>
                     <select id="door_count">
-                        <option value="0">No Doors</option>
-                        <option value="1" selected>1 Door</option>
+                        <option value="0" selected>No Doors</option>
+                        <option value="1">1 Door</option>
                         <option value="2">2 Doors</option>
                     </select>
                 </div>
                 <div>
                     <label for="drawer_count">Drawers</label>
                     <select id="drawer_count">
-                        <option value="0" selected>No Drawers</option>
+                        <option value="0">No Drawers</option>
                         <option value="1">1 Drawer</option>
                         <option value="2">2 Drawers</option>
-                        <option value="3">3 Drawers</option>
+                        <option value="3" selected>3 Drawers</option>
                         <option value="4">4 Drawers</option>
                         <option value="5">5 Drawers</option>
                     </select>
@@ -384,11 +332,11 @@
                 <label for="drawer_sizing">Drawer Sizing</label>
                 <div class="radio-group">
                     <label>
-                        <input type="radio" name="drawer_sizing" value="equal" checked>
+                        <input type="radio" name="drawer_sizing" value="equal">
                         Equal Height
                     </label>
                     <label>
-                        <input type="radio" name="drawer_sizing" value="graduated">
+                        <input type="radio" name="drawer_sizing" value="graduated" checked>
                         Graduated (Small to Large)
                     </label>
                     <label>
@@ -400,6 +348,14 @@
             
             <div id="custom_drawer_heights" style="display:none; margin-top: 12px;">
                 <label>Custom Drawer Heights (inches)</label>
+                <div style="margin-bottom: 8px;">
+                    <label style="font-size: 11px; color: #666;">Wall Oven Presets:</label>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button type="button" onclick="insertOvenPreset('single')" style="padding: 4px 8px; font-size: 11px; background: #f0f0f0; border: 1px solid #ccc; border-radius: 3px; cursor: pointer;">Single (28")</button>
+                        <button type="button" onclick="insertOvenPreset('double')" style="padding: 4px 8px; font-size: 11px; background: #f0f0f0; border: 1px solid #ccc; border-radius: 3px; cursor: pointer;">Double (50")</button>
+                        <button type="button" onclick="insertOvenPreset('microwave')" style="padding: 4px 8px; font-size: 11px; background: #f0f0f0; border: 1px solid #ccc; border-radius: 3px; cursor: pointer;">Microwave (15")</button>
+                    </div>
+                </div>
                 <div id="drawer_height_inputs" class="drawer-heights-container">
                     <!-- Dynamic inputs will be added here -->
                 </div>
@@ -420,22 +376,14 @@
                 </div>
             </div>
             
-            <div class="checkbox-group">
-                <input type="checkbox" id="has_countertop" checked>
-                <label for="has_countertop">Include Countertop</label>
-            </div>
-            
-            <div class="checkbox-group">
-                <input type="checkbox" id="has_backsplash" checked>
-                <label for="has_backsplash">Include Backsplash</label>
-            </div>
-            
             <!-- Corner Cabinet Options -->
             <div id="corner_options" style="display:none;">
                 <label for="corner_type">Corner Type</label>
                 <select id="corner_type">
-                    <option value="blind">Blind Corner</option>
-                    <option value="lazy_susan">Lazy Susan</option>
+                    <option value="inside_36">36"x36" Inside Corner (L-Shaped)</option>
+                    <option value="inside_24">24"x24" Inside Corner (L-Shaped)</option>
+                    <option value="outside_36">36"x36" Outside Corner (L-Shaped)</option>
+                    <option value="outside_24">24"x24" Outside Corner (L-Shaped)</option>
                 </select>
             </div>
             
@@ -458,6 +406,7 @@
             <select id="run_cabinet_type">
                 <option value="base">Base Cabinets</option>
                 <option value="wall">Wall Cabinets</option>
+                <option value="island">Island</option>
             </select>
             
             <label for="run_frame_type">Frame Type</label>
@@ -494,11 +443,192 @@
         let existingRuns = [];
         let currentRun = null;
         
+        // Handle template change - show/hide corner options
+        function handleTemplateChange(template) {
+            console.log('Template changed to:', template);
+            
+            // Show/hide corner options
+            const cornerOptions = document.getElementById('corner_options');
+            if (cornerOptions) {
+                cornerOptions.style.display = (template === 'corner') ? 'block' : 'none';
+                console.log('Corner options display:', cornerOptions.style.display);
+            }
+            
+            // Hide width and depth for corner cabinets (size determined by corner type)
+            const widthContainer = document.getElementById('width_container');
+            const depthContainer = document.getElementById('depth_container');
+            if (widthContainer) {
+                widthContainer.style.display = (template === 'corner') ? 'none' : 'block';
+            }
+            if (depthContainer) {
+                depthContainer.style.display = (template === 'corner') ? 'none' : 'block';
+            }
+            
+            // Handle depth changes for wall stack
+            const depthInput = document.getElementById('depth');
+            const doorCountSelect = document.getElementById('door_count');
+            const drawerCountSelect = document.getElementById('drawer_count');
+            
+            if (template === 'upper_42_12' || template === 'upper_42_12_12') {
+                depthInput.value = '15';
+                doorCountSelect.disabled = true;
+                drawerCountSelect.disabled = true;
+                doorCountSelect.value = '0';
+                drawerCountSelect.value = '0';
+            } else if (template !== 'corner') {
+                const runType = currentRun ? currentRun.run_type : 'base';
+                if (runType === 'wall') {
+                    depthInput.value = '12';
+                } else {
+                    depthInput.value = '24';
+                }
+                doorCountSelect.disabled = false;
+                drawerCountSelect.disabled = false;
+            }
+        }
+        
         // Load existing runs when dialog opens
         window.addEventListener('load', function() {
+            console.log('Dialog loaded, setting up event listeners...');
             sketchup.get_existing_runs();
             sketchup.get_current_run();
+            
+            // Set up New Run button
+            const newRunBtn = document.getElementById('new_run_btn');
+            if (newRunBtn) {
+                console.log('New Run button found, attaching listener');
+                newRunBtn.addEventListener('click', function() {
+                    console.log('New Run button clicked!');
+                    showNewRunDialog();
+                });
+            } else {
+                console.error('New Run button not found in DOM!');
+            }
         });
+        
+        // Show new run dialog
+        function showNewRunDialog() {
+            console.log('showNewRunDialog called');
+            
+            // Create a custom dialog for new run
+            const dialogHtml = `
+                <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000;" id="new_run_dialog">
+                    <div style="background: white; border-radius: 8px; padding: 24px; min-width: 400px; max-width: 450px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); max-height: 90vh; overflow-y: auto;">
+                        <h3 style="margin: 0 0 16px 0; font-size: 16px; color: #333;">Create New Cabinet Run</h3>
+                        <div style="margin-bottom: 16px;">
+                            <label style="display: block; margin-bottom: 6px; color: #555; font-weight: 500; font-size: 12px;">Run Name</label>
+                            <input type="text" id="new_run_name" value="Run ${existingRuns.length + 1}" style="width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px;">
+                        </div>
+                        <div style="margin-bottom: 16px;">
+                            <label style="display: block; margin-bottom: 6px; color: #555; font-weight: 500; font-size: 12px;">Room Preset</label>
+                            <select id="new_run_room_preset" style="width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px;">
+                                <option value="kitchen" selected>Kitchen</option>
+                                <option value="bathroom">Bathroom</option>
+                                <option value="closet">Closet</option>
+                            </select>
+                        </div>
+                        <div style="margin-bottom: 16px;">
+                            <label style="display: block; margin-bottom: 6px; color: #555; font-weight: 500; font-size: 12px;">Cabinet Type</label>
+                            <select id="new_run_type" style="width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px;">
+                                <option value="base">Base Cabinets</option>
+                                <option value="wall">Wall Cabinets</option>
+                                <option value="island">Island</option>
+                            </select>
+                        </div>
+                        <div style="margin-bottom: 16px;">
+                            <label style="display: block; margin-bottom: 6px; color: #555; font-weight: 500; font-size: 12px;">Frame Type</label>
+                            <select id="new_run_frame_type" style="width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px;">
+                                <option value="frameless" selected>Frameless</option>
+                                <option value="inset">Inset</option>
+                                <option value="overlay">Overlay</option>
+                            </select>
+                        </div>
+                        <div style="margin-bottom: 16px;">
+                            <label style="display: flex; align-items: center; cursor: pointer; font-size: 13px; color: #555;">
+                                <input type="checkbox" id="new_run_has_countertop" checked style="margin-right: 8px; width: 16px; height: 16px;">
+                                <span>Include Countertop</span>
+                            </label>
+                        </div>
+                        <div style="margin-bottom: 20px;">
+                            <label style="display: flex; align-items: center; cursor: pointer; font-size: 13px; color: #555;">
+                                <input type="checkbox" id="new_run_has_backsplash" checked style="margin-right: 8px; width: 16px; height: 16px;">
+                                <span>Include Backsplash</span>
+                            </label>
+                        </div>
+                        <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                            <button type="button" onclick="document.getElementById('new_run_dialog').remove()" style="padding: 8px 16px; border: 1px solid #ccc; background: white; border-radius: 4px; cursor: pointer; font-size: 13px;">Cancel</button>
+                            <button type="button" id="confirm_new_run" style="padding: 8px 16px; border: none; background: #0078d4; color: white; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500;">Create</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.insertAdjacentHTML('beforeend', dialogHtml);
+            document.getElementById('new_run_name').focus();
+            document.getElementById('new_run_name').select();
+            
+            // Update countertop/backsplash defaults when cabinet type changes
+            document.getElementById('new_run_type').addEventListener('change', function() {
+                const runType = this.value;
+                const countertopCheck = document.getElementById('new_run_has_countertop');
+                const backsplashCheck = document.getElementById('new_run_has_backsplash');
+                
+                if (runType === 'wall') {
+                    countertopCheck.checked = false;
+                    backsplashCheck.checked = false;
+                } else if (runType === 'island') {
+                    countertopCheck.checked = true;
+                    backsplashCheck.checked = false;
+                } else { // base
+                    countertopCheck.checked = true;
+                    backsplashCheck.checked = true;
+                }
+            });
+            
+            // Handle Create button
+            document.getElementById('confirm_new_run').addEventListener('click', function() {
+                const runName = document.getElementById('new_run_name').value;
+                const roomPreset = document.getElementById('new_run_room_preset').value;
+                const runType = document.getElementById('new_run_type').value;
+                const frameType = document.getElementById('new_run_frame_type').value;
+                const hasCountertop = document.getElementById('new_run_has_countertop').checked;
+                const hasBacksplash = document.getElementById('new_run_has_backsplash').checked;
+                
+                if (runName) {
+                    // Create the run (use run name as room name)
+                    const params = { 
+                        name: runName, 
+                        room_name: runName,
+                        room_preset: roomPreset,
+                        run_type: runType,
+                        frame_type: frameType,
+                        has_countertop: hasCountertop,
+                        has_backsplash: hasBacksplash
+                    };
+                    
+                    console.log('Creating run with params:', params);
+                    
+                    // Call Ruby callback using HtmlDialog API
+                    try {
+                        sketchup.create_run(JSON.stringify(params));
+                    } catch (e) {
+                        console.error('Error calling create_run:', e);
+                        alert('Error creating run: ' + e.message);
+                    }
+                    
+                    document.getElementById('new_run_dialog').remove();
+                } else {
+                    alert('Please enter a run name.');
+                }
+            });
+            
+            // Handle Enter key
+            document.getElementById('new_run_name').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    document.getElementById('confirm_new_run').click();
+                }
+            });
+        }
         
         // Receive existing runs from Ruby
         function receiveExistingRuns(runs) {
@@ -510,18 +640,57 @@
         function receiveCurrentRun(run) {
             currentRun = run;
             updateCurrentRunDisplay();
+            
+            // Update defaults based on run type
+            if (run && run.run_type) {
+                updateDefaultsForRunType(run.run_type);
+                filterTemplatesByRunType(run.run_type);
+            }
+        }
+        
+        // Update defaults based on run type
+        function updateDefaultsForRunType(runType) {
+            const wallHeightOptions = document.getElementById('wall_cabinet_height_options');
+            
+            if (runType === 'wall') {
+                // Wall cabinets: no countertop, no backsplash, 2 doors
+                document.getElementById('has_countertop').checked = false;
+                document.getElementById('has_backsplash').checked = false;
+                document.getElementById('door_count').value = '2';
+                document.getElementById('drawer_count').value = '0';
+                wallHeightOptions.style.display = 'block';
+            } else if (runType === 'base' || runType === 'island') {
+                // Base/Island cabinets: countertop, backsplash (base only), 0 doors, 3 drawers
+                document.getElementById('has_countertop').checked = true;
+                document.getElementById('has_backsplash').checked = (runType === 'base');
+                document.getElementById('door_count').value = '0';
+                document.getElementById('drawer_count').value = '3';
+                wallHeightOptions.style.display = 'none';
+            }
+            
+            // Trigger change events to update UI
+            updateDoorDrawerOptions();
         }
         
         // Update current run display
         function updateCurrentRunDisplay() {
             const selector = document.getElementById('current_run');
             const runInfo = document.getElementById('run_info');
-            const sectionCount = document.getElementById('run_section_count');
             
             if (currentRun) {
                 selector.value = currentRun.id;
+                
+                // Update info display with run properties
+                const sectionCount = currentRun.section_count || 0;
+                const frameType = currentRun.frame_type || 'frameless';
+                const hasCountertop = currentRun.has_countertop !== false;
+                const hasBacksplash = currentRun.has_backsplash !== false;
+                
+                document.getElementById('run_section_count').textContent = `${sectionCount} cabinet${sectionCount !== 1 ? 's' : ''}`;
+                document.getElementById('run_frame_type_display').textContent = frameType;
+                document.getElementById('run_countertop_display').textContent = hasCountertop ? 'Countertop' : 'No countertop';
+                document.getElementById('run_backsplash_display').textContent = hasBacksplash ? 'Backsplash' : 'No backsplash';
                 runInfo.style.display = 'block';
-                sectionCount.textContent = currentRun.section_count;
             } else {
                 selector.value = '';
                 runInfo.style.display = 'none';
@@ -577,55 +746,25 @@
             });
         });
         
-        // Preset button handling
-        document.querySelectorAll('.preset-btn').forEach(btn => {
-            btn.addEventListener('click', function() {
-                document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-                document.getElementById('room_preset').value = this.dataset.preset;
-                applyRoomPreset(this.dataset.preset);
-            });
-        });
-        
         // Run management event handlers
         document.getElementById('current_run').addEventListener('change', function() {
             if (this.value) {
-                sketchup.select_run(this.value);
-            }
-        });
-        
-        document.getElementById('new_run_btn').addEventListener('click', function() {
-            const roomName = document.getElementById('room_name').value || 'Kitchen';
-            const runName = prompt('Enter name for new cabinet run:', `Run ${existingRuns.length + 1}`);
-            if (runName) {
-                sketchup.create_run(JSON.stringify({ name: runName, room_name: roomName }));
-            }
-        });
-        
-        // Room name change updates current run if it exists
-        document.getElementById('room_name').addEventListener('change', function() {
-            if (currentRun) {
-                // Update current run's room name
-                // This will be handled automatically when creating new cabinets
-            }
-        });
-        
-        // Build mode toggle
-        document.querySelectorAll('input[name="build_mode"]').forEach(radio => {
-            radio.addEventListener('change', function() {
-                const runConnectionOptions = document.getElementById('run_connection_options');
-                if (this.value === 'single') {
-                    document.getElementById('single_cabinet_options').style.display = 'block';
-                    document.getElementById('cabinet_run_options').style.display = 'none';
-                    runConnectionOptions.style.display = 'block';
-                } else {
-                    document.getElementById('single_cabinet_options').style.display = 'none';
-                    document.getElementById('cabinet_run_options').style.display = 'block';
-                    runConnectionOptions.style.display = 'none';
+                // Find the run and update properties
+                const selectedRun = existingRuns.find(r => r.id === this.value);
+                if (selectedRun) {
+                    currentRun = selectedRun;
+                    updateCurrentRunDisplay();
+                    updateDefaultsForRunType(selectedRun.run_type);
+                    filterTemplatesByRunType(selectedRun.run_type);
                 }
-            });
+                sketchup.select_run(this.value);
+            } else {
+                // No run selected
+                currentRun = null;
+            }
         });
         
+
         // Drawer count change - show/hide sizing and layout options
         document.getElementById('drawer_count').addEventListener('change', function() {
             const drawerCount = parseInt(this.value);
@@ -646,6 +785,12 @@
             radio.addEventListener('change', function() {
                 const customHeightsDiv = document.getElementById('custom_drawer_heights');
                 customHeightsDiv.style.display = this.value === 'custom' ? 'block' : 'none';
+                
+                // If switching to custom, update inputs based on current drawer count
+                if (this.value === 'custom') {
+                    const drawerCount = parseInt(document.getElementById('drawer_count').value);
+                    updateCustomHeightInputs(drawerCount);
+                }
             });
         });
         
@@ -656,6 +801,121 @@
             
             // Show layout options if both doors and drawers selected
             document.getElementById('layout_options').style.display = (drawerCount > 0 && doorCount > 0) ? 'block' : 'none';
+        });
+        
+        // Run type change - update countertop/backsplash defaults and filter templates
+        document.getElementById('run_type').addEventListener('change', function() {
+            const runType = this.value;
+            const countertopCheck = document.getElementById('run_has_countertop');
+            const backsplashCheck = document.getElementById('run_has_backsplash');
+            
+            // Update countertop/backsplash defaults
+            if (runType === 'wall') {
+                countertopCheck.checked = false;
+                backsplashCheck.checked = false;
+            } else if (runType === 'island') {
+                countertopCheck.checked = true;
+                backsplashCheck.checked = false;
+            } else {
+                countertopCheck.checked = true;
+                backsplashCheck.checked = true;
+            }
+            
+            // Filter cabinet templates based on run type
+            filterTemplatesByRunType(runType);
+            
+            // Update current run if exists
+            if (currentRun) {
+                currentRun.run_type = runType;
+                updateCurrentRunDisplay();
+            }
+        });
+        
+        // Filter templates based on run type
+        function filterTemplatesByRunType(runType) {
+            const templateSelect = document.getElementById('cabinet_template');
+            const options = templateSelect.querySelectorAll('option');
+            
+            options.forEach(option => {
+                const optionRunType = option.getAttribute('data-run-type');
+                
+                // Show option if:
+                // 1. It has no data-run-type (universal like standard, corner, tall)
+                // 2. Its data-run-type matches the current run type
+                if (!optionRunType || optionRunType === runType) {
+                    option.style.display = '';
+                    option.disabled = false;
+                } else {
+                    option.style.display = 'none';
+                    option.disabled = true;
+                }
+            });
+            
+            // If current selection is now hidden, select first visible option
+            if (templateSelect.selectedOptions[0].disabled) {
+                for (let option of options) {
+                    if (!option.disabled) {
+                        templateSelect.value = option.value;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Template changes - update depth for wall stack templates
+        document.getElementById('cabinet_template').addEventListener('change', function() {
+            const template = this.value;
+            const depthInput = document.getElementById('depth');
+            const doorCountSelect = document.getElementById('door_count');
+            const drawerCountSelect = document.getElementById('drawer_count');
+            
+            // Show/hide corner options
+            const isCorner = (template === 'corner');
+            const cornerOptions = document.getElementById('corner_options');
+            if (cornerOptions) {
+                cornerOptions.style.display = isCorner ? 'block' : 'none';
+            }
+            
+            // Get door/drawer label (may not exist)
+            const doorLabel = document.querySelector('label[for="door_count"]');
+            const doorDrawerLabel = doorLabel ? doorLabel.parentElement.parentElement.previousElementSibling : null;
+            
+            // Wall stack templates (42"+12" and 42"+12"+12") should default to 15" depth
+            if (template === 'upper_42_12' || template === 'upper_42_12_12') {
+                depthInput.value = '15';
+                
+                // Disable door/drawer selection for wall stacks (they have fixed configuration)
+                doorCountSelect.disabled = true;
+                drawerCountSelect.disabled = true;
+                doorCountSelect.value = '0';
+                drawerCountSelect.value = '0';
+                
+                // Hide the configuration label
+                if (doorDrawerLabel && doorDrawerLabel.textContent === 'Cabinet Configuration') {
+                    doorDrawerLabel.style.display = 'none';
+                }
+                document.querySelector('.inline-group-2').style.opacity = '0.5';
+                document.querySelector('.inline-group-2').style.pointerEvents = 'none';
+            } else {
+                // Reset to standard depth (24" for base/island, 12" for wall)
+                const runType = currentRun ? currentRun.run_type : 'base';
+                if (runType === 'wall') {
+                    depthInput.value = '12';
+                } else {
+                    depthInput.value = '24';
+                }
+                
+                // Re-enable door/drawer selection
+                doorCountSelect.disabled = false;
+                drawerCountSelect.disabled = false;
+                
+                // Show the configuration label
+                if (doorDrawerLabel) {
+                    doorDrawerLabel.style.display = '';
+                }
+                document.querySelector('.inline-group-2').style.opacity = '1';
+                document.querySelector('.inline-group-2').style.pointerEvents = 'auto';
+            }
         });
         
         // Cabinet type changes
@@ -669,6 +929,85 @@
             // Update default dimensions based on type
             updateDefaultDimensions(this.value);
         });
+        
+        // Insert wall oven preset height into drawer inputs
+        function insertOvenPreset(type) {
+            const ovenHeights = {
+                single: 28,
+                double: 50,
+                microwave: 15
+            };
+            
+            const ovenHeight = ovenHeights[type];
+            const drawerCount = parseInt(document.getElementById('drawer_count').value);
+            
+            if (drawerCount === 0) {
+                alert('Please select at least 1 drawer first.');
+                return;
+            }
+            
+            // Get cabinet height
+            const heightInput = document.getElementById('height');
+            const height = parseFloat(heightInput.value);
+            
+            if (isNaN(height) || height <= 0) {
+                alert('Please set cabinet height first.');
+                return;
+            }
+            
+            // Determine if cabinet has toe kick
+            const templateInput = document.getElementById('cabinet_template');
+            const template = templateInput.value;
+            const selectedOption = templateInput.options[templateInput.selectedIndex];
+            const runType = selectedOption.getAttribute('data-run-type');
+            const hasToeKick = (!runType || runType === 'base') && !template.includes('upper') && template !== 'tall';
+            
+            // Calculate available height
+            let availableHeight = height;
+            if (hasToeKick) {
+                availableHeight -= 4; // Subtract toe kick height
+            }
+            
+            // Calculate remaining height for drawers
+            const remainingHeight = availableHeight - ovenHeight;
+            
+            if (remainingHeight < 2) {
+                alert(`Not enough space! Cabinet height (${availableHeight}") minus oven (${ovenHeight}") leaves only ${remainingHeight.toFixed(2)}" for drawers.\n\nIncrease cabinet height or use fewer/smaller drawers.`);
+                return;
+            }
+            
+            // Distribute remaining height among drawers
+            const drawerHeight = remainingHeight / drawerCount;
+            
+            if (drawerHeight < 2) {
+                alert(`Drawers too small! ${drawerCount} drawer(s) with ${remainingHeight.toFixed(2)}" available = ${drawerHeight.toFixed(2)}" each.\n\nReduce number of drawers or increase cabinet height.`);
+                return;
+            }
+            
+            // Set one drawer to oven height, distribute rest
+            // Place oven opening in the middle drawer position
+            const ovenPosition = Math.floor(drawerCount / 2);
+            
+            for (let i = 0; i < drawerCount; i++) {
+                const input = document.getElementById(`drawer_height_${i}`);
+                if (input) {
+                    if (i === ovenPosition) {
+                        input.value = ovenHeight.toFixed(2);
+                    } else {
+                        input.value = drawerHeight.toFixed(2);
+                    }
+                }
+            }
+            
+            // Show helpful message
+            const heightValidation = document.getElementById('height_validation');
+            heightValidation.style.color = '#27ae60';
+            heightValidation.textContent = `✓ ${type.charAt(0).toUpperCase() + type.slice(1)} oven preset applied (${ovenHeight}" opening at position ${ovenPosition + 1})`;
+            
+            setTimeout(() => {
+                heightValidation.textContent = '';
+            }, 5000);
+        }
         
         // Function to update custom height inputs based on drawer count
         function updateCustomHeightInputs(count) {
@@ -707,6 +1046,12 @@
             
             for (let i = 0; i < drawerCount; i++) {
                 const input = document.getElementById(`drawer_height_${i}`);
+                
+                // If input doesn't exist, return error
+                if (!input) {
+                    return { valid: false, message: `Drawer height input ${i + 1} not found. Please refresh the page.` };
+                }
+                
                 const value = parseFloat(input.value);
                 
                 if (isNaN(value) || value < 2) {
@@ -818,106 +1163,153 @@
         
         // Create cabinet
         function createCabinet() {
-            const buildMode = document.querySelector('input[name="build_mode"]:checked').value;
+            // Check if we have a current run selected
+            if (!currentRun) {
+                alert('Please select or create a cabinet run first.');
+                return;
+            }
+            
             const data = {
-                room_name: document.getElementById('room_name').value,
-                room_preset: document.getElementById('room_preset').value,
-                build_mode: buildMode
+                room_preset: currentRun.room_preset || 'kitchen',
+                run_id: currentRun.id
             };
             
-            if (buildMode === 'single') {
-                // Get run connection option
-                const runConnection = document.querySelector('input[name="run_connection"]:checked').value;
-                data.run_connection = runConnection;
-                
-                if (runConnection === 'extend_run') {
-                    data.target_run = document.getElementById('target_run').value;
-                    if (!data.target_run) {
-                        alert('Please select a run to extend');
-                        return;
-                    }
-                }
-                
-                // Get width
-                let width = document.getElementById('width').value;
-                if (width === 'custom') {
-                    width = document.getElementById('width_custom').value;
-                }
-                
-                // Build door/drawer configuration from separate controls
-                const doorCount = parseInt(document.getElementById('door_count').value);
-                const drawerCount = parseInt(document.getElementById('drawer_count').value);
+            // Get width
+            let width = document.getElementById('width').value;
+            if (width === 'custom') {
+                width = document.getElementById('width_custom').value;
+            }
+            
+            // Build door/drawer configuration from separate controls
+            const doorCount = parseInt(document.getElementById('door_count').value);
+            const drawerCount = parseInt(document.getElementById('drawer_count').value);
                 const drawerSizing = document.querySelector('input[name="drawer_sizing"]:checked')?.value || 'equal';
                 const layoutOrder = document.querySelector('input[name="layout_order"]:checked')?.value || 'drawers_top';
                 
                 // Collect custom drawer heights if applicable
                 let customDrawerHeights = null;
-                if (drawerSizing === 'custom' && drawerCount > 0 && doorCount === 0) {
-                    const height = parseFloat(document.getElementById('height').value);
-                    const cabinetType = document.getElementById('cabinet_type').value;
-                    
-                    // Calculate available height for drawers
-                    let availableHeight = height;
-                    if (cabinetType === 'base' || cabinetType === 'island') {
-                        availableHeight -= 4; // Subtract toe kick height
+                if (drawerSizing === 'custom' && drawerCount > 0) {
+                    try {
+                        // First check: verify the custom heights section is visible
+                        const customHeightsDiv = document.getElementById('custom_drawer_heights');
+                        if (!customHeightsDiv) {
+                            alert('Error: Cannot find custom drawer heights section in the form.');
+                            return;
+                        }
+                        
+                        if (customHeightsDiv.style.display === 'none') {
+                            alert('Custom drawer heights section is hidden. Please:\n1. Select number of drawers\n2. Select "Custom Heights" radio button\n3. Enter drawer heights\n4. Then click Create Cabinet');
+                            return;
+                        }
+                        
+                        // Second check: verify the container with inputs exists
+                        const container = document.getElementById('drawer_height_inputs');
+                        if (!container) {
+                            alert('Error: Cannot find drawer height inputs container.');
+                            return;
+                        }
+                        
+                        // Third check: verify inputs were created
+                        const firstInput = document.getElementById('drawer_height_0');
+                        if (!firstInput && drawerCount > 0) {
+                            alert(`Error: Drawer height inputs were not created.\nExpected to find drawer_height_0 but it doesn't exist.\n\nPlease try:\n1. Change drawer count to 0\n2. Change back to ${drawerCount}\n3. Select "Custom Heights"\n4. Try again`);
+                            return;
+                        }
+                        
+                        const heightInput = document.getElementById('height');
+                        const templateInput = document.getElementById('cabinet_template');
+                        if (!heightInput) {
+                            alert('Error: Cannot find height input field in the form.');
+                            return;
+                        }
+                        if (!templateInput) {
+                            alert('Error: Cannot find cabinet_template input field in the form.');
+                            return;
+                        }
+                        
+                        const height = parseFloat(heightInput.value);
+                        const template = templateInput.value;
+                        
+                        // Determine if cabinet has toe kick based on template
+                        // Templates with data-run-type="wall" or templates named with "upper" are wall cabinets
+                        const selectedOption = templateInput.options[templateInput.selectedIndex];
+                        const runType = selectedOption.getAttribute('data-run-type');
+                        const hasToeKick = (!runType || runType === 'base') && !template.includes('upper') && template !== 'tall';
+                        
+                        // Calculate available height for drawers
+                        let availableHeight = height;
+                        if (hasToeKick) {
+                            availableHeight -= 4; // Subtract toe kick height for base cabinets
+                        }
+                        
+                        // If there are doors too, we don't validate total height
+                        // Just collect the individual drawer heights and let backend handle it
+                        if (doorCount > 0) {
+                            // Mixed door+drawer - just collect heights without validation
+                            const heights = [];
+                            for (let i = 0; i < drawerCount; i++) {
+                                const inputId = `drawer_height_${i}`;
+                                const input = document.getElementById(inputId);
+                                if (!input) {
+                                    alert(`Cannot find drawer height input field #${i + 1}. Input ID: ${inputId}\nDrawer count: ${drawerCount}\nMake sure you selected "Custom Heights" option.`);
+                                    return;
+                                }
+                                const value = parseFloat(input.value);
+                                if (isNaN(value) || value < 2) {
+                                    alert(`Drawer ${i + 1} height must be at least 2 inches`);
+                                    return;
+                                }
+                                heights.push(value);
+                            }
+                            customDrawerHeights = heights;
+                            console.log('Custom drawer heights (mixed mode):', customDrawerHeights);
+                        } else {
+                            // Drawers only - validate total equals available height
+                            const validation = validateCustomHeights(drawerCount, availableHeight);
+                            if (!validation.valid) {
+                                console.error('Custom height validation failed:', validation.message);
+                                document.getElementById('height_validation').textContent = validation.message;
+                                alert('Please check drawer heights: ' + validation.message);
+                                return;
+                            }
+                            customDrawerHeights = validation.heights;
+                            console.log('Custom drawer heights:', customDrawerHeights);
+                        }
+                        document.getElementById('height_validation').textContent = '';
+                    } catch (error) {
+                        console.error('Error validating custom heights:', error);
+                        alert('Error with custom drawer heights: ' + error.message);
+                        return;
                     }
-                    
-                    const validation = validateCustomHeights(drawerCount, availableHeight);
-                    if (!validation.valid) {
-                        document.getElementById('height_validation').textContent = validation.message;
-                        return; // Don't submit
-                    }
-                    
-                    customDrawerHeights = validation.heights;
-                    document.getElementById('height_validation').textContent = '';
                 }
                 
-                //Debug output
-                console.log('Dialog values:', { doorCount, drawerCount, drawerSizing, layoutOrder, customDrawerHeights });
-                console.log('==> CREATING CABINET WITH: Doors=' + doorCount + ', Drawers=' + drawerCount);
-                
-                // Don't build config string here - let Ruby do it to avoid URL encoding issues
-                // Just pass the raw values
-                
-                data.cabinet = {
-                    type: document.getElementById('cabinet_type').value,
-                    frame_type: document.getElementById('frame_type').value,
-                    width: parseFloat(width),
-                    depth: parseFloat(document.getElementById('depth').value),
-                    height: parseFloat(document.getElementById('height').value),
-                    door_count: doorCount,
-                    drawer_count: drawerCount,
-                    drawer_sizing: drawerSizing,
-                    custom_drawer_heights: customDrawerHeights,
-                    layout_order: layoutOrder,
-                    has_countertop: document.getElementById('has_countertop').checked,
-                    has_backsplash: document.getElementById('has_backsplash').checked,
-                    corner_type: document.getElementById('corner_type').value,
-                    has_seating_side: document.getElementById('has_seating_side').checked
-                };
-            } else {
-                // Cabinet run
-                const applianceGaps = [];
-                document.querySelectorAll('#appliance_gaps_container .appliance-gap-item').forEach(item => {
-                    const inputs = item.querySelectorAll('input');
-                    if (inputs.length >= 3 && inputs[0].value && inputs[1].value) {
-                        applianceGaps.push({
-                            position: parseFloat(inputs[0].value),
-                            width: parseFloat(inputs[1].value),
-                            label: inputs[2].value || 'Appliance'
-                        });
-                    }
-                });
-                
-                data.cabinet_run = {
-                    total_length: parseFloat(document.getElementById('run_length').value),
-                    cabinet_type: document.getElementById('run_cabinet_type').value,
-                    frame_type: document.getElementById('run_frame_type').value,
-                    has_countertop: document.getElementById('run_has_countertop').checked,
-                    has_backsplash: document.getElementById('run_has_backsplash').checked,
-                    appliance_gaps: applianceGaps
-                };
-            }
+            //Debug output
+            console.log('Dialog values:', { doorCount, drawerCount, drawerSizing, layoutOrder, customDrawerHeights });
+            console.log('==> CREATING CABINET WITH: Doors=' + doorCount + ', Drawers=' + drawerCount);
+            
+            // Get frame type, countertop, and backsplash from current run
+            const frameType = currentRun.frame_type || 'frameless';
+            const hasCountertop = currentRun.has_countertop !== false;
+            const hasBacksplash = currentRun.has_backsplash !== false;
+            
+            // Build cabinet data
+            data.cabinet = {
+                template: document.getElementById('cabinet_template').value,
+                frame_type: frameType,
+                width: parseFloat(width),
+                depth: parseFloat(document.getElementById('depth').value),
+                height: parseFloat(document.getElementById('height').value),
+                height_from_floor: parseFloat(document.getElementById('height_from_floor').value) || 54,
+                door_count: doorCount,
+                drawer_count: drawerCount,
+                drawer_sizing: drawerSizing,
+                custom_drawer_heights: customDrawerHeights,
+                layout_order: layoutOrder,
+                has_countertop: hasCountertop,
+                has_backsplash: hasBacksplash,
+                corner_type: document.getElementById('corner_type').value,
+                has_seating_side: document.getElementById('has_seating_side').checked
+            };
             
             // Send to Ruby - use encodeURIComponent to preserve special characters like +
             window.location = 'skp:create_cabinet@' + encodeURIComponent(JSON.stringify(data));
@@ -927,6 +1319,18 @@
         function cancel() {
             window.location = 'skp:cancel@';
         }
+        
+        // Initialize UI on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Show drawer sizing options since default has 3 drawers
+            const drawerCount = parseInt(document.getElementById('drawer_count').value);
+            if (drawerCount > 0) {
+                document.getElementById('drawer_sizing_options').style.display = 'block';
+            }
+            
+            // Hide custom width input initially
+            document.getElementById('width_custom').style.display = 'none';
+        });
     </script>
 </body>
 </html>

@@ -310,6 +310,69 @@ For issues, feature requests, or questions:
 - Check Ruby Console for detailed error messages
 - Include SketchUp version and cabinet configuration when reporting issues
 
+## Development Notes
+
+### SketchUp API Limitations & Workarounds
+
+**Problem: Nested Group Invalidation**
+
+SketchUp has a critical limitation with deeply nested groups during entity creation:
+- When iterating over model entities and creating geometry in nested groups (A → B → C), parent group B becomes invalid
+- This causes "reference to deleted Group" errors
+- The invalidation happens during the operation, even within the same transaction
+
+**Failed Approaches:**
+1. ❌ Building directly into nested groups (Run → Appliances → entities) - parent invalidates
+2. ❌ Building at model level, converting to component with `to_component` - invalidates parent groups
+3. ❌ Building at model level, exploding and regrouping - entities get lost or positioned incorrectly
+4. ❌ Using `transform_entities` to move geometry between collections - doesn't preserve entities
+5. ❌ Keeping Ruby object references to groups across operations - references become stale
+
+**Working Solution:**
+
+For special elements like range placeholders that need to be in subgroups:
+
+1. **Build directly into the target group's entities collection**
+   ```ruby
+   @box_builder.build(cabinet, @current_run.appliances_group.entities, position)
+   ```
+   - Avoids all nested group creation during iteration
+   - Entities are created at correct position relative to parent group
+   - No transformation complexity
+
+2. **Reload group references between operations**
+   ```ruby
+   def next_position
+     load_subgroups  # Finds groups by attributes, not by stale Ruby references
+     # ... calculate bounds
+   end
+   ```
+   - Each cabinet creation is a separate operation/transaction
+   - Group object references become invalid between operations
+   - Must re-find groups in the model by their attributes, not by stored Ruby variables
+
+**Key Lessons:**
+- Don't nest group creation beyond 2 levels during entity iteration
+- Don't store SketchUp group references across operation boundaries
+- Build geometry directly into final destination, not at model level then move
+- Use attributes to relocate groups, not Ruby object references
+- `to_component` and `explode` cause unexpected group invalidations
+
+### Cabinet Run Structure
+
+Each cabinet run uses this group hierarchy:
+```
+Kitchen - Run Name (main group)
+├── Carcass (subgroup) - cabinet boxes
+├── Faces (subgroup) - doors and drawer fronts  
+├── Countertops (subgroup) - countertop surfaces
+├── Backsplash (subgroup) - backsplash panels
+├── Hardware (subgroup) - hinges, pulls, slides
+└── Appliances (subgroup) - ranges, dishwashers, etc.
+```
+
+Subgroups are identified by `CabinetBuilder.subgroup_type` attribute, not by name or position.
+
 ## License
 
 Copyright (c) 2025 MikMort
@@ -317,5 +380,5 @@ Copyright (c) 2025 MikMort
 ---
 
 **Version**: 1.0.0  
-**Last Updated**: November 19, 2025  
+**Last Updated**: November 22, 2025  
 **Compatible With**: SketchUp 2017+

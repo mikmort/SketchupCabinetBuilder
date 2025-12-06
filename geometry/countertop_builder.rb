@@ -44,6 +44,12 @@ module MikMort
         
         # Build single cabinet countertop into separate groups
         def build_single_separate(cabinet, countertop_group, backsplash_group, options)
+          # Handle corner cabinets specially
+          if cabinet.type == :corner_base || cabinet.type == :corner_wall
+            build_corner_countertop_separate(cabinet, countertop_group, backsplash_group, options)
+            return
+          end
+          
           front_overhang = countertop_overhang(:overhang_front)
           side_overhang = options[:add_side_overhang] ? countertop_overhang(:overhang_side) : 0
           back_overhang = countertop_overhang(:overhang_back)
@@ -76,6 +82,211 @@ module MikMort
             backsplash_z = start_z + t
             create_backsplash(backsplash_group.entities, start_x, backsplash_y, backsplash_z, 
                             w, backsplash_height, t)
+          end
+        end
+        
+        # Build L-shaped countertop for corner cabinets
+        def build_corner_countertop_separate(cabinet, countertop_group, backsplash_group, options)
+          front_overhang = countertop_overhang(:overhang_front)
+          thickness = Constants::COUNTERTOP[:thickness]
+          cabinet_height = cabinet.height || Constants::BASE_CABINET[:height]
+          
+          # Get corner size from corner_type
+          corner_size = case cabinet.corner_type
+          when :inside_36, :outside_36 then 36.0
+          when :inside_24, :outside_24 then 24.0
+          else 36.0
+          end
+          
+          t = thickness.inch
+          start_z = cabinet_height.inch
+          fo = front_overhang.inch
+          
+          # Shift Y is only for INSIDE corners to align with the recessed back
+          # Outside corners are aligned at Y=0
+          shift_y = cabinet.corner_type.to_s.include?('outside') ? 0.inch : -12.inch
+          
+          entities = countertop_group.entities
+          material = @materials.countertop_material
+          size = corner_size.inch
+          cutout = 12.inch
+
+          if cabinet.corner_type.to_s.include?('outside')
+            # OUTSIDE CORNER COUNTERTOP (L-shape wrapping around a wall)
+            # Matches the carcass footprint:
+            # - Main Run: X=0..36, Y=0..24
+            # - Return Run: X=12..36, Y=24..36
+            # - Empty Space (Wall): X=0..12, Y=24..36
+            
+            l_pts = [
+              Geom::Point3d.new(0, 0 + shift_y - fo, start_z),                   # 1. Front-Left (Overhang)
+              Geom::Point3d.new(0, 24.inch + shift_y, start_z),                  # 2. Left-Back (Connects to Left Run)
+              Geom::Point3d.new(12.inch, 24.inch + shift_y, start_z),            # 3. Inner Corner (Wall Corner)
+              Geom::Point3d.new(12.inch, size + shift_y, start_z),               # 4. Back-Inner (Connects to Back Run)
+              Geom::Point3d.new(size + fo, size + shift_y, start_z),             # 5. Back-Right (Overhang)
+              Geom::Point3d.new(size + fo, 0 + shift_y - fo, start_z)            # 6. Front-Right (Overhang)
+            ]
+            
+            face = entities.add_face(l_pts)
+            if face && face.valid?
+              face.reverse! if face.normal.z < 0
+              face.material = material
+              face.pushpull(t)
+            end
+            
+            # Apply countertop material to all faces (front and back)
+            entities.grep(Sketchup::Face).each do |f|
+              if f.valid?
+                f.material = material
+                f.back_material = material
+              end
+            end
+            
+            if cabinet.has_backsplash
+              bs_height = Constants::COUNTERTOP[:backsplash_height].inch
+              bs_z = start_z + t
+              bs_thick = 1.5.inch
+              
+              # Backsplash 1: Along Y=24 wall (from X=0 to 12)
+              pts_bs1 = [
+                Geom::Point3d.new(0, 24.inch + shift_y, bs_z),
+                Geom::Point3d.new(12.inch, 24.inch + shift_y, bs_z),
+                Geom::Point3d.new(12.inch, 24.inch + shift_y, bs_z + bs_height),
+                Geom::Point3d.new(0, 24.inch + shift_y, bs_z + bs_height)
+              ]
+              f_bs1 = entities.add_face(pts_bs1)
+              if f_bs1 && f_bs1.valid?
+                f_bs1.material = material
+                f_bs1.back_material = material
+                f_bs1.pushpull(-bs_thick) # Pull towards front (-Y)
+              end
+              
+              # Backsplash 2: Along X=12 wall (from Y=24 to 36)
+              # Ensure points are ordered to create a face with normal pointing towards +X (into the room)
+              pts_bs2 = [
+                Geom::Point3d.new(12.inch, 24.inch + shift_y, bs_z),
+                Geom::Point3d.new(12.inch, size + shift_y, bs_z),
+                Geom::Point3d.new(12.inch, size + shift_y, bs_z + bs_height),
+                Geom::Point3d.new(12.inch, 24.inch + shift_y, bs_z + bs_height)
+              ]
+              f_bs2 = entities.add_face(pts_bs2)
+              if f_bs2 && f_bs2.valid?
+                # Ensure normal points to +X
+                f_bs2.reverse! if f_bs2.normal.x < 0
+                
+                f_bs2.material = material
+                f_bs2.back_material = material # Apply to both sides to be safe
+                f_bs2.pushpull(bs_thick) # Pull towards right (+X)
+              end
+            end
+            
+            return # Done with outside corner
+          end
+
+          # TRUE L-SHAPED corner countertop
+          # 36" x 36" footprint with 24" x 24" cutout at front-right corner
+          # Same shape as the cabinet box
+          
+          # L-shaped countertop with overhangs on exposed edges
+          # Cutout at Front-Left (X=0..12, Y=0..12)
+          # No overhang on sides connecting to neighbors (X=0, Y=12..36) and (X=36, Y=0..36)?
+          # Wait, if connecting to neighbors:
+          # - Left side (X=0, Y=12..36) connects to Left Run. No overhang.
+          # - Right side (X=36, Y=0..36) connects to Right Run? Or Wall?
+          # If Right Run is along Right Wall, then X=36 is against wall? No, X=36 is Right side of cabinet.
+          # If Right Run is along Right Wall, it connects to the FRONT of the Right Leg? No.
+          # Usually corner cabinet connects to runs on both sides.
+          # So X=0 (Back Leg Left Side) connects to Left Run.
+          # Y=0 (Right Leg Front Side) connects to Right Run? No, Right Run is along Right Wall.
+          # So Right Run connects to X=36? No.
+          # Right Run is perpendicular. It runs along X=something.
+          # If Right Run is along Right Wall (X=36+24?), then it connects to X=36 side of corner cabinet.
+          # So X=36 side connects to Right Run. No overhang.
+          
+          # Overhangs needed at:
+          # - Inner Face 1 (Y=0, X=0..12)
+          # - Inner Face 2 (X=12, Y=-12..0)
+          
+          # Add 0.75" overhang to the Right Leg Front (Y=-12)
+          # This makes the countertop edge at Y = -12.75
+          # Carcass is at Y = -12.
+          # Overhang = 0.75".
+          
+          # Also add overhang to the Right Leg Side (X=12)
+          # Door is at X=11.25.
+          # Overhang should be 0.75" from door face?
+          # X = 11.25 - 0.75 = 10.5.
+          
+          l_pts = [
+            Geom::Point3d.new(0, cutout + shift_y - fo, start_z),              # 1. Left edge, front (overhang)
+            Geom::Point3d.new(cutout - fo, cutout + shift_y - fo, start_z),    # 2. Inner corner (overhang intersection)
+            Geom::Point3d.new(cutout - 1.5.inch, 0 + shift_y - 0.75.inch, start_z),  # 3. Front edge, left (Overhang 1.5" from X=12)
+            Geom::Point3d.new(size, 0 + shift_y - 0.75.inch, start_z),         # 4. Front-Right (Overhang 0.75")
+            Geom::Point3d.new(size, size + shift_y, start_z),                  # 5. Back-Right
+            Geom::Point3d.new(0, size + shift_y, start_z)                      # 6. Back-Left
+          ]
+          
+          face = entities.add_face(l_pts)
+          if face && face.valid?
+            face.reverse! if face.normal.z < 0
+            face.material = material
+            face.pushpull(t)
+          end
+          
+          # Apply countertop material to all faces (front and back)
+          entities.grep(Sketchup::Face).each do |f|
+            if f.valid?
+              f.material = material
+              f.back_material = material
+            end
+          end
+          
+          # Create L-shaped backsplash along both back walls
+          if cabinet.has_backsplash
+            backsplash_height = Constants::COUNTERTOP[:backsplash_height].inch
+            backsplash_z = start_z + t
+            bs_entities = backsplash_group.entities
+            bs_thickness = 1.5.inch
+            
+            # Backsplash along back wall (at Y=36", full width)
+            # Starts at X=0 (connecting to left run)
+            pts1 = [
+              Geom::Point3d.new(0, size + shift_y, backsplash_z),
+              Geom::Point3d.new(size, size + shift_y, backsplash_z),
+              Geom::Point3d.new(size, size + shift_y, backsplash_z + backsplash_height),
+              Geom::Point3d.new(0, size + shift_y, backsplash_z + backsplash_height)
+            ]
+            bs_face1 = bs_entities.add_face(pts1)
+            if bs_face1 && bs_face1.valid?
+              bs_face1.material = material
+              # Normal is -Y (Front). Pushpull positive to go Front (onto the countertop).
+              bs_face1.pushpull(bs_thickness)
+            end
+            
+            # Backsplash along right wall (at X=36", full depth)
+            # Should extend to front edge of countertop (Flush, no overhang)
+            bs_start_y = 0 + shift_y - 0.75.inch
+            
+            pts2 = [
+              Geom::Point3d.new(size, bs_start_y, backsplash_z),
+              Geom::Point3d.new(size, size + shift_y, backsplash_z),
+              Geom::Point3d.new(size, size + shift_y, backsplash_z + backsplash_height),
+              Geom::Point3d.new(size, bs_start_y, backsplash_z + backsplash_height)
+            ]
+            bs_face2 = bs_entities.add_face(pts2)
+            if bs_face2 && bs_face2.valid?
+              bs_face2.material = material
+              # Normal is +X (Right). Pushpull negative to go Left (onto the countertop).
+              bs_face2.pushpull(-bs_thickness)
+            end
+            
+            # Apply countertop material to all backsplash faces (front and back)
+            bs_entities.grep(Sketchup::Face).each do |f|
+              if f.valid?
+                f.material = material
+                f.back_material = material
+              end
+            end
           end
         end
         
@@ -209,6 +420,8 @@ module MikMort
         # Create the main countertop slab
         def create_countertop_slab(entities, x, y, z, width, depth, thickness)
           begin
+            material = @materials.countertop_material
+            
             # Create rectangle for countertop
             pts = [
               Geom::Point3d.new(x, y, z),
@@ -220,19 +433,26 @@ module MikMort
             # Create bottom face
             bottom_face = entities.add_face(pts)
             if bottom_face && bottom_face.valid?
-              bottom_face.material = @materials.countertop_material
+              bottom_face.material = material
+              bottom_face.back_material = material
               
               # Create top face (manual extrusion)
               top_pts = pts.map { |pt| Geom::Point3d.new(pt.x, pt.y, pt.z + thickness) }
               top_face = entities.add_face(top_pts.reverse)
-              top_face.material = @materials.countertop_material if top_face
+              if top_face
+                top_face.material = material
+                top_face.back_material = material
+              end
               
               # Create side faces
               pts.each_with_index do |pt, i|
                 next_i = (i + 1) % pts.length
                 side_pts = [pts[i], pts[next_i], top_pts[next_i], top_pts[i]]
                 side_face = entities.add_face(side_pts)
-                side_face.material = @materials.countertop_material if side_face
+                if side_face
+                  side_face.material = material
+                  side_face.back_material = material
+                end
               end
             end
             

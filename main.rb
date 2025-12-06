@@ -96,8 +96,9 @@ module MikMort
     
     # Create a SubZero panel-ready refrigerator
     # @param width [Integer] Width in inches: 30, 36, 42, or 48
+    # @param series [Symbol] Series type: :classic or :designer
     # @param options [Hash] Additional options
-    def self.create_subzero_fridge(width = 36, options = {})
+    def self.create_subzero_fridge(width = 36, series = :classic, options = {})
       model = Sketchup.active_model
       room_name = options[:room_name] || 'Kitchen'
       
@@ -105,18 +106,54 @@ module MikMort
       valid_widths = [30, 36, 42, 48]
       width = 36 unless valid_widths.include?(width)
       
+      # Get dimensions for the specified series
+      series_data = Constants::SUBZERO_FRIDGE[series]
+      
       generator = Geometry::CabinetGenerator.new(model, room_name)
       cabinet = Cabinet.new(:subzero_fridge, {
         width: width,
-        depth: Constants::SUBZERO_FRIDGE[:"depth_#{width}"],
-        height: Constants::SUBZERO_FRIDGE[:"height_#{width}"],
+        depth: series_data[:"depth_#{width}"],
+        height: series_data[:"height_#{width}"],
+        series: series,
         frame_type: :frameless,
         door_drawer_config: :doors,
         has_countertop: false,
-        has_backsplash: false
+        has_backsplash: false,
+        position: options[:position] || [0, 0, 0],
+        single_door: options[:single_door]
       })
       
-      generator.generate_cabinet(cabinet)
+      generator.generate_cabinet(cabinet) unless options[:skip_generation]
+      
+      return cabinet if options[:skip_generation]
+    end
+    
+    # Create a split SubZero fridge/freezer combination
+    # @param fridge_width [Integer] Width of fridge unit in inches: 24 or 30
+    # @param freezer_width [Integer] Width of freezer unit in inches: 18 or 24
+    # @param series [Symbol] Series type: :classic or :designer
+    # @param options [Hash] Additional options
+    def self.create_subzero_split(fridge_width, freezer_width, series = :classic, options = {})
+      model = Sketchup.active_model
+      room_name = options[:room_name] || 'Kitchen'
+      
+      generator = Geometry::CabinetGenerator.new(model, room_name)
+      
+      # Create fridge unit (force single door)
+      fridge = create_subzero_fridge(fridge_width, series, options.merge(skip_generation: true, single_door: true))
+      generator.generate_cabinet(fridge)
+      
+      # Position freezer next to fridge (force single door)
+      freezer_options = options.merge(
+        skip_generation: true,
+        single_door: true,
+        position: [fridge_width, 0, 0]
+      )
+      freezer = create_subzero_fridge(freezer_width, series, freezer_options)
+      generator.generate_cabinet(freezer)
+      
+      # Return both units
+      { fridge: fridge, freezer: freezer }
     end
     
     # Create a Miele panel-ready dishwasher
@@ -134,6 +171,45 @@ module MikMort
         door_drawer_config: :'1_drawer',
         has_countertop: options[:countertop] || true,
         has_backsplash: false
+      })
+      
+      generator.generate_cabinet(cabinet)
+    end
+    
+    # Create a wall oven/microwave placeholder in tall cabinet
+    # @param oven_type [Symbol] :single, :double, or :microwave
+    # @param options [Hash] Additional options
+    def self.create_wall_oven(oven_type = :single, options = {})
+      model = Sketchup.active_model
+      room_name = options[:room_name] || 'Kitchen'
+      
+      # Calculate total height based on oven type and drawer configuration
+      oven_height = case oven_type
+                   when :single
+                     Constants::WALL_OVEN[:height_single]
+                   when :double
+                     Constants::WALL_OVEN[:height_double]
+                   when :microwave
+                     Constants::WALL_OVEN[:height_micro]
+                   else
+                     Constants::WALL_OVEN[:height_single]
+                   end
+      
+      # Default: oven at 12" from bottom, with drawers above
+      oven_bottom = options[:oven_bottom] || 12.0
+      cabinet_height = options[:height] || Constants::TALL_CABINET[:height]
+      
+      generator = Geometry::CabinetGenerator.new(model, room_name)
+      cabinet = Cabinet.new(:wall_oven, {
+        width: Constants::WALL_OVEN[:width],
+        depth: Constants::TALL_CABINET[:depth],
+        height: cabinet_height,
+        frame_type: :frameless,
+        door_drawer_config: :'2_drawers',  # Drawers above oven by default
+        has_countertop: false,
+        has_backsplash: false,
+        oven_type: oven_type,
+        oven_bottom: oven_bottom
       })
       
       generator.generate_cabinet(cabinet)
@@ -229,20 +305,54 @@ module MikMort
       # SubZero refrigerator options
       subzero_menu = quick_menu.add_submenu('SubZero Fridge')
       
-      subzero_menu.add_item('30" Built-In') {
-        MikMort::CabinetBuilder.create_subzero_fridge(30)
+      # Classic Series (with top vent)
+      classic_menu = subzero_menu.add_submenu('Classic Series')
+      
+      classic_menu.add_item('30" Built-In') {
+        MikMort::CabinetBuilder.create_subzero_fridge(30, :classic)
       }
       
-      subzero_menu.add_item('36" Built-In') {
-        MikMort::CabinetBuilder.create_subzero_fridge(36)
+      classic_menu.add_item('36" Built-In') {
+        MikMort::CabinetBuilder.create_subzero_fridge(36, :classic)
       }
       
-      subzero_menu.add_item('42" Built-In') {
-        MikMort::CabinetBuilder.create_subzero_fridge(42)
+      classic_menu.add_item('42" Built-In') {
+        MikMort::CabinetBuilder.create_subzero_fridge(42, :classic)
       }
       
-      subzero_menu.add_item('48" Built-In') {
-        MikMort::CabinetBuilder.create_subzero_fridge(48)
+      classic_48_menu = classic_menu.add_submenu('48" Built-In')
+      
+      classic_48_menu.add_item('24" Fridge + 24" Freezer') {
+        MikMort::CabinetBuilder.create_subzero_split(24, 24, :classic)
+      }
+      
+      classic_48_menu.add_item('30" Fridge + 18" Freezer') {
+        MikMort::CabinetBuilder.create_subzero_split(30, 18, :classic)
+      }
+      
+      # Designer Series (no top vent, flush design)
+      designer_menu = subzero_menu.add_submenu('Designer Series')
+      
+      designer_menu.add_item('30" Built-In') {
+        MikMort::CabinetBuilder.create_subzero_fridge(30, :designer)
+      }
+      
+      designer_menu.add_item('36" Built-In') {
+        MikMort::CabinetBuilder.create_subzero_fridge(36, :designer)
+      }
+      
+      designer_menu.add_item('42" Built-In') {
+        MikMort::CabinetBuilder.create_subzero_fridge(42, :designer)
+      }
+      
+      designer_48_menu = designer_menu.add_submenu('48" Built-In')
+      
+      designer_48_menu.add_item('24" Fridge + 24" Freezer') {
+        MikMort::CabinetBuilder.create_subzero_split(24, 24, :designer)
+      }
+      
+      designer_48_menu.add_item('30" Fridge + 18" Freezer') {
+        MikMort::CabinetBuilder.create_subzero_split(30, 18, :designer)
       }
       
       quick_menu.add_separator
