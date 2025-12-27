@@ -27,6 +27,7 @@ module MikMort
     require File.join(base_path, 'geometry', 'geometry_validator.rb')
     require File.join(base_path, 'geometry', 'cabinet_connection_manager.rb')
     require File.join(base_path, 'geometry', 'cabinet_generator.rb')
+    require File.join(base_path, 'geometry', 'led_recess_builder.rb')
     
     # Load UI
     require File.join(base_path, 'ui', 'dialog.rb')
@@ -38,6 +39,52 @@ module MikMort
     def self.show_dialog
       @dialog_manager ||= DialogManager.new
       @dialog_manager.show
+    end
+    
+    # Create LED recess on selected carcass
+    # @param edge [Symbol] Which edge to add recess: :front, :back, :left, :right
+    def self.create_led_recess(edge = :front)
+      model = Sketchup.active_model
+      selection = model.selection
+      
+      if selection.empty?
+        UI.messagebox("Please select a carcass group first.")
+        return nil
+      end
+      
+      group = selection.first
+      unless group.is_a?(Sketchup::Group)
+        UI.messagebox("Please select a group (carcass).")
+        return nil
+      end
+      
+      # Extract run name from the group (use group name or parent name if available)
+      run_name = group.name.to_s
+      if run_name.empty? || run_name == "Carcass"
+        # Try to get name from parent if this is a nested group
+        run_name = "Run"
+      end
+      
+      model.start_operation('Create LED Recess', true)
+      begin
+        builder = Geometry::LEDRecessBuilder.new(model)
+        recess_group = builder.create_recess(group, edge, run_name)
+        
+        if recess_group
+          model.commit_operation
+          UI.messagebox("LED recess created successfully!")
+          recess_group
+        else
+          model.abort_operation
+          UI.messagebox("Failed to create LED recess.")
+          nil
+        end
+      rescue => e
+        model.abort_operation
+        UI.messagebox("Error creating LED recess: #{e.message}")
+        puts e.backtrace.join("\n")
+        nil
+      end
     end
     
     # Quick create methods for testing/scripting
@@ -277,6 +324,27 @@ module MikMort
       # Main dialog
       cabinet_menu.add_item('Build Cabinet...') {
         MikMort::CabinetBuilder.show_dialog
+      }
+      
+      cabinet_menu.add_separator
+      
+      # LED Recess submenu
+      led_menu = cabinet_menu.add_submenu('Create LED Recess')
+      
+      led_menu.add_item('Front Edge') {
+        MikMort::CabinetBuilder.create_led_recess(:front)
+      }
+      
+      led_menu.add_item('Back Edge') {
+        MikMort::CabinetBuilder.create_led_recess(:back)
+      }
+      
+      led_menu.add_item('Left Edge') {
+        MikMort::CabinetBuilder.create_led_recess(:left)
+      }
+      
+      led_menu.add_item('Right Edge') {
+        MikMort::CabinetBuilder.create_led_recess(:right)
       }
       
       cabinet_menu.add_separator

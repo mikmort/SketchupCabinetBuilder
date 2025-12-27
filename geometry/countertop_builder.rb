@@ -118,14 +118,27 @@ module MikMort
             # - Return Run: X=12..36, Y=24..36
             # - Empty Space (Wall): X=0..12, Y=24..36
             
-            l_pts = [
-              Geom::Point3d.new(0, 0 + shift_y - fo, start_z),                   # 1. Front-Left (Overhang)
-              Geom::Point3d.new(0, 24.inch + shift_y, start_z),                  # 2. Left-Back (Connects to Left Run)
-              Geom::Point3d.new(12.inch, 24.inch + shift_y, start_z),            # 3. Inner Corner (Wall Corner)
-              Geom::Point3d.new(12.inch, size + shift_y, start_z),               # 4. Back-Inner (Connects to Back Run)
-              Geom::Point3d.new(size + fo, size + shift_y, start_z),             # 5. Back-Right (Overhang)
-              Geom::Point3d.new(size + fo, 0 + shift_y - fo, start_z)            # 6. Front-Right (Overhang)
-            ]
+            # For 24" corner size, points 3 and 4 would be identical (both at Y=24),
+            # so we use a simple rectangle instead of an L-shape
+            if corner_size <= 24.0
+              # Simple rectangle for 24" outside corner
+              l_pts = [
+                Geom::Point3d.new(0, 0 + shift_y - fo, start_z),                   # Front-Left (Overhang)
+                Geom::Point3d.new(0, size + shift_y, start_z),                     # Back-Left
+                Geom::Point3d.new(size + fo, size + shift_y, start_z),             # Back-Right (Overhang)
+                Geom::Point3d.new(size + fo, 0 + shift_y - fo, start_z)            # Front-Right (Overhang)
+              ]
+            else
+              # L-shape for larger corner sizes (36"+)
+              l_pts = [
+                Geom::Point3d.new(0, 0 + shift_y - fo, start_z),                   # 1. Front-Left (Overhang)
+                Geom::Point3d.new(0, 24.inch + shift_y, start_z),                  # 2. Left-Back (Connects to Left Run)
+                Geom::Point3d.new(12.inch, 24.inch + shift_y, start_z),            # 3. Inner Corner (Wall Corner)
+                Geom::Point3d.new(12.inch, size + shift_y, start_z),               # 4. Back-Inner (Connects to Back Run)
+                Geom::Point3d.new(size + fo, size + shift_y, start_z),             # 5. Back-Right (Overhang)
+                Geom::Point3d.new(size + fo, 0 + shift_y - fo, start_z)            # 6. Front-Right (Overhang)
+              ]
+            end
             
             face = entities.add_face(l_pts)
             if face && face.valid?
@@ -147,36 +160,54 @@ module MikMort
               bs_z = start_z + t
               bs_thick = 1.5.inch
               
-              # Backsplash 1: Along Y=24 wall (from X=0 to 12)
-              pts_bs1 = [
-                Geom::Point3d.new(0, 24.inch + shift_y, bs_z),
-                Geom::Point3d.new(12.inch, 24.inch + shift_y, bs_z),
-                Geom::Point3d.new(12.inch, 24.inch + shift_y, bs_z + bs_height),
-                Geom::Point3d.new(0, 24.inch + shift_y, bs_z + bs_height)
-              ]
-              f_bs1 = entities.add_face(pts_bs1)
-              if f_bs1 && f_bs1.valid?
-                f_bs1.material = material
-                f_bs1.back_material = material
-                f_bs1.pushpull(-bs_thick) # Pull towards front (-Y)
-              end
-              
-              # Backsplash 2: Along X=12 wall (from Y=24 to 36)
-              # Ensure points are ordered to create a face with normal pointing towards +X (into the room)
-              pts_bs2 = [
-                Geom::Point3d.new(12.inch, 24.inch + shift_y, bs_z),
-                Geom::Point3d.new(12.inch, size + shift_y, bs_z),
-                Geom::Point3d.new(12.inch, size + shift_y, bs_z + bs_height),
-                Geom::Point3d.new(12.inch, 24.inch + shift_y, bs_z + bs_height)
-              ]
-              f_bs2 = entities.add_face(pts_bs2)
-              if f_bs2 && f_bs2.valid?
-                # Ensure normal points to +X
-                f_bs2.reverse! if f_bs2.normal.x < 0
+              if corner_size <= 24.0
+                # For 24" corner, backsplash runs along Y=size (back edge) and X=size (right edge)
+                # Backsplash 1: Along Y=size (back wall from X=0 to size)
+                pts_bs1 = [
+                  Geom::Point3d.new(0, size + shift_y, bs_z),
+                  Geom::Point3d.new(size, size + shift_y, bs_z),
+                  Geom::Point3d.new(size, size + shift_y, bs_z + bs_height),
+                  Geom::Point3d.new(0, size + shift_y, bs_z + bs_height)
+                ]
+                f_bs1 = entities.add_face(pts_bs1)
+                if f_bs1 && f_bs1.valid?
+                  f_bs1.material = material
+                  f_bs1.back_material = material
+                  f_bs1.pushpull(-bs_thick)
+                end
+              else
+                # For larger corners (36"+), L-shaped backsplash
+                # Backsplash 1: Along Y=24 wall (from X=0 to 12)
+                pts_bs1 = [
+                  Geom::Point3d.new(0, 24.inch + shift_y, bs_z),
+                  Geom::Point3d.new(12.inch, 24.inch + shift_y, bs_z),
+                  Geom::Point3d.new(12.inch, 24.inch + shift_y, bs_z + bs_height),
+                  Geom::Point3d.new(0, 24.inch + shift_y, bs_z + bs_height)
+                ]
+                f_bs1 = entities.add_face(pts_bs1)
+                if f_bs1 && f_bs1.valid?
+                  f_bs1.material = material
+                  f_bs1.back_material = material
+                  f_bs1.pushpull(-bs_thick) # Pull towards front (-Y)
+                end
                 
-                f_bs2.material = material
-                f_bs2.back_material = material # Apply to both sides to be safe
-                f_bs2.pushpull(bs_thick) # Pull towards right (+X)
+                # Backsplash 2: Along X=12 wall (from Y=24 to 36)
+                # Ensure points are ordered to create a face with normal pointing towards +X (into the room)
+                pts_bs2 = [
+                  Geom::Point3d.new(12.inch, 24.inch + shift_y, bs_z),
+                  Geom::Point3d.new(12.inch, size + shift_y, bs_z),
+                  Geom::Point3d.new(12.inch, size + shift_y, bs_z + bs_height),
+                  Geom::Point3d.new(12.inch, 24.inch + shift_y, bs_z + bs_height)
+                ]
+                f_bs2 = entities.add_face(pts_bs2)
+                if f_bs2 && f_bs2.valid?
+                  # Ensure normal points to +X
+                  f_bs2.reverse! if f_bs2.normal.x < 0
+                  
+                  f_bs2.material = material
+                  f_bs2.back_material = material # Apply to both sides to be safe
+                  f_bs2.pushpull(bs_thick) # Pull towards right (+X)
+                end
               end
             end
             

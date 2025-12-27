@@ -398,11 +398,55 @@ module MikMort
           
           if !result
             UI.messagebox("Failed to create cabinet. Check Ruby Console for errors.")
+          else
+            # Add LED light strip if requested (for wall cabinets)
+            if cabinet_params['has_led_light_strip'] && (type == :wall || run_type == 'wall')
+              add_led_light_strip(result, generator.current_run)
+            end
           end
         rescue => e
           puts "Error in create_single_cabinet: #{e.message}"
           puts e.backtrace.first(10).join("\n")
           UI.messagebox("Error: #{e.message}")
+        end
+      end
+      
+      # Add LED light strip recess to a cabinet
+      def add_led_light_strip(cabinet_group, current_run)
+        begin
+          model = Sketchup.active_model
+          
+          # Find the carcass group that contains this cabinet
+          carcass_group = current_run&.carcass_group
+          
+          puts "DEBUG add_led_light_strip: current_run=#{current_run.inspect}"
+          puts "DEBUG add_led_light_strip: carcass_group=#{carcass_group.inspect}"
+          puts "DEBUG add_led_light_strip: carcass_group valid?=#{carcass_group&.valid?}"
+          
+          if carcass_group && carcass_group.valid?
+            # Get run name for placeholder naming
+            run_name = current_run.name || "Run"
+            
+            puts "DEBUG add_led_light_strip: Creating LED recess for run '#{run_name}'"
+            
+            # Wrap in its own operation
+            model.start_operation('Add LED Light Strip', true)
+            
+            # Create the LED recess builder and add recess
+            builder = Geometry::LEDRecessBuilder.new(model)
+            result = builder.create_recess(carcass_group, :front, run_name)
+            
+            puts "DEBUG add_led_light_strip: create_recess returned #{result.inspect}"
+            
+            model.commit_operation
+            puts "DEBUG: LED light strip added to cabinet"
+          else
+            puts "DEBUG: Could not find valid carcass group for LED light strip"
+          end
+        rescue => e
+          model.abort_operation if model
+          puts "Error adding LED light strip: #{e.message}"
+          puts e.backtrace.first(10).join("\n")
         end
       end
       
