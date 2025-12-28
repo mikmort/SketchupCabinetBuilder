@@ -61,7 +61,7 @@ module MikMort
             t = thickness.inch
             
             # Determine if this cabinet needs toe kick elevation
-            has_toe_kick = (cabinet.type == :base || cabinet.type == :island)
+            has_toe_kick = (cabinet.type == :base || cabinet.type == :island || cabinet.type == :display_base)
             kick_height = has_toe_kick ? Constants::BASE_CABINET[:toe_kick_height].inch : 0
             kick_depth = has_toe_kick ? Constants::BASE_CABINET[:toe_kick_depth].inch : 0
             total_height = kick_height + h
@@ -78,8 +78,8 @@ module MikMort
               create_toe_kick_side_panel(entities, :left, w, d, t, total_height, kick_height, kick_depth, @materials.box_material)
               create_toe_kick_side_panel(entities, :right, w, d, t, total_height, kick_height, kick_depth, @materials.box_material)
             else
-              # For cabinets with top panels (wall, tall, floating), reduce side height by panel thickness
-              has_top_panel = (cabinet.type == :wall || cabinet.type == :tall || cabinet.type == :floating)
+              # For cabinets with top panels (wall, tall, floating, display), reduce side height by panel thickness
+              has_top_panel = (cabinet.type == :wall || cabinet.type == :tall || cabinet.type == :floating || cabinet.type == :display_wall)
               side_height = has_top_panel ? h - t : h
               
               pts = [[0, 0, 0], [t, 0, 0], [t, d, 0], [0, d, 0]]
@@ -90,27 +90,31 @@ module MikMort
             
             # Back panel (slightly thinner, elevated by kick_height, full width for frameless)
             # For cabinets with top panels, reduce back height by panel thickness
-            has_top_panel = (cabinet.type == :wall || cabinet.type == :tall || cabinet.type == :floating)
+            has_top_panel = (cabinet.type == :wall || cabinet.type == :tall || cabinet.type == :floating || cabinet.type == :display_base || cabinet.type == :display_wall)
             back_height = has_top_panel ? h - t : h
             pts = [[0, d - back_thickness, kick_height], [w, d - back_thickness, kick_height], [w, d, kick_height], [0, d, kick_height]]
             create_simple_box(entities, pts, back_height, @materials.box_material)
             
-            # Create top panel (for wall cabinets and tall cabinets)
-            if cabinet.type == :wall || cabinet.type == :tall || cabinet.type == :floating
+            # Create top panel (for wall cabinets, tall cabinets, and display cabinets)
+            if cabinet.type == :wall || cabinet.type == :tall || cabinet.type == :floating || cabinet.type == :display_base || cabinet.type == :display_wall
               top_z = kick_height + h - t
               pts = [[0, 0, top_z], [w, 0, top_z], [w, d, top_z], [0, d, top_z]]
               create_simple_box(entities, pts, t, @materials.box_material)
             end
             
-            # Create interior shelves (one adjustable shelf for now)
-            if height > 24.inch
+            # Create interior shelves
+            if cabinet.type == :display_base || cabinet.type == :display_wall
+              # Display cabinet: multiple shelves spaced 14-18" apart
+              create_display_cabinet_shelves(entities, cabinet, w, d, h, t, back_thickness, kick_height)
+            elsif height > 24.inch
+              # Standard cabinet: one adjustable shelf in the middle
               shelf_height = kick_height + (height / 2.0)
               pts = [[t, 0, shelf_height], [w - t, 0, shelf_height], [w - t, d - back_thickness, shelf_height], [t, d - back_thickness, shelf_height]]
               create_simple_box(entities, pts, t, @materials.interior_material)
             end
             
-            # Add toe kick for base and island cabinets
-            if cabinet.type == :base || cabinet.type == :island
+            # Add toe kick for base, island, and display_base cabinets
+            if cabinet.type == :base || cabinet.type == :island || cabinet.type == :display_base
               add_toe_kick(entities, width, depth)
             end
           rescue => e
@@ -625,6 +629,77 @@ module MikMort
           ]
           
           create_simple_box(entities, pts, extrude, material)
+        end
+        
+        # Create shelves for display cabinet (spaced 14-18" apart)
+        def create_display_cabinet_shelves(entities, cabinet, w, d, h, t, back_thickness, kick_height)
+          # Calculate available interior height (excluding bottom and top panels)
+          interior_height = h - (2 * t)  # Height minus top and bottom panels
+          bottom_z = kick_height + t  # Start above bottom panel
+          
+          # Target shelf spacing of 14-18" (use 16" as ideal)
+          ideal_spacing = 16.0.inch
+          min_spacing = 14.0.inch
+          max_spacing = 18.0.inch
+          
+          # Calculate number of shelves that fit
+          # We need at least one shelf for display purposes
+          num_shelves = (interior_height / ideal_spacing).floor
+          num_shelves = [num_shelves, 1].max  # At least 1 shelf
+          
+          # Calculate actual spacing
+          if num_shelves > 0
+            spacing = interior_height / (num_shelves + 1)  # +1 for top/bottom gaps
+            
+            # Clamp spacing to min/max
+            if spacing < min_spacing
+              num_shelves = (interior_height / max_spacing).floor
+              num_shelves = [num_shelves, 1].max
+              spacing = interior_height / (num_shelves + 1)
+            elsif spacing > max_spacing
+              num_shelves = (interior_height / min_spacing).floor
+              spacing = interior_height / (num_shelves + 1)
+            end
+          else
+            spacing = interior_height / 2.0
+            num_shelves = 1
+          end
+          
+          puts "DEBUG Display Cabinet: interior_height=#{interior_height}, num_shelves=#{num_shelves}, spacing=#{spacing}"
+          
+          # Get or create display shelf material
+          display_shelf_material = get_or_create_display_shelf_material
+          
+          # Create each shelf
+          num_shelves.times do |i|
+            shelf_z = bottom_z + spacing * (i + 1)
+            
+            # Shelf spans from left panel to right panel, front to back (minus back panel)
+            pts = [
+              [t, 0, shelf_z],
+              [w - t, 0, shelf_z],
+              [w - t, d - back_thickness, shelf_z],
+              [t, d - back_thickness, shelf_z]
+            ]
+            
+            shelf_group = entities.add_group
+            shelf_group.name = "Shelf #{i + 1}"
+            create_simple_box(shelf_group.entities, pts, t, display_shelf_material)
+          end
+        end
+        
+        # Get or create the display shelf material
+        def get_or_create_display_shelf_material
+          material_name = "Display_Shelf_Face"
+          material = @model.materials[material_name]
+          
+          unless material
+            material = @model.materials.add(material_name)
+            # Light wood color for display shelves
+            material.color = Sketchup::Color.new(220, 200, 170)
+          end
+          
+          material
         end
         
         # Add toe kick components (recessed face only)

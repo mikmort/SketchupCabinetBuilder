@@ -267,6 +267,7 @@
                 <option value="corner">Corner</option>
                 <option value="tall">Tall/Pantry</option>
                 <option value="3_door_graduated" data-run-type="base">3 Door Graduated</option>
+                <option value="display" data-run-type="wall">Display Cabinet</option>
             </select>
             
             <div class="inline-group-3">
@@ -279,6 +280,7 @@
                         <option value="18">18"</option>
                         <option value="21">21"</option>
                         <option value="24" selected>24"</option>
+                        <option value="27">27"</option>
                         <option value="30">30"</option>
                         <option value="33">33"</option>
                         <option value="36">36"</option>
@@ -483,6 +485,13 @@
                 drawerCountSelect.disabled = true;
                 doorCountSelect.value = '0';
                 drawerCountSelect.value = '0';
+            } else if (template === 'display') {
+                // Display cabinet - doors only, no drawers, user can choose 1 or 2 doors
+                depthInput.value = '12';
+                doorCountSelect.disabled = false;  // Allow door count selection
+                drawerCountSelect.disabled = true;
+                doorCountSelect.value = '2';  // Default to 2 glass doors
+                drawerCountSelect.value = '0'; // No drawers
             } else if (template !== 'corner') {
                 const runType = currentRun ? currentRun.run_type : 'base';
                 if (runType === 'wall') {

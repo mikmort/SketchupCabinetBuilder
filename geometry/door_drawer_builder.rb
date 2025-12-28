@@ -34,6 +34,13 @@ module MikMort
               return
             end
             
+            # Special handling for display cabinets - glass doors with frame
+            if cabinet.type == :display_base || cabinet.type == :display_wall
+              puts "DEBUG: Detected display cabinet. Calling build_display_doors."
+              build_display_doors(cabinet, fronts_group, hardware_group)
+              return
+            end
+            
             config_sections = cabinet.parse_config
             
             # Calculate available height for doors/drawers
@@ -376,6 +383,274 @@ module MikMort
           end
         end
         
+        # Build display cabinet doors (glass doors with 1" frame)
+        def build_display_doors(cabinet, fronts_group, hardware_group)
+          puts "DEBUG: Building display cabinet doors"
+          reveal = Constants::DOOR_DRAWER[:reveal].inch
+          frameless_reveal = Constants::DOOR_DRAWER[:frameless_reveal].inch
+          center_reveal = cabinet.frame_type == :frameless ? frameless_reveal : reveal
+          thickness = Constants::DOOR_DRAWER[:thickness].inch
+          frame_width = 1.0.inch  # 1" frame around glass
+          
+          width = cabinet.width.inch
+          
+          # Get door count from cabinet config (default to 2 if not specified)
+          door_count = cabinet.options[:door_count] || 2
+          door_count = [door_count.to_i, 1].max  # At least 1 door
+          door_count = [door_count, 2].min       # At most 2 doors
+          
+          puts "DEBUG: Display cabinet door_count=#{door_count}"
+          
+          # Available width adjustments based on frame type
+          if cabinet.frame_type == :frameless
+            width_available = width - (2 * frameless_reveal)
+            edge_start = frameless_reveal
+          else
+            width_available = width - (2 * reveal)
+            edge_start = reveal
+          end
+          
+          total_center_spacing = center_reveal * (door_count - 1)
+          door_width = (width_available - total_center_spacing) / door_count
+          door_height = cabinet.interior_height.inch - (2 * reveal)
+          
+          # Position doors - account for toe kick if display_base
+          toe_kick_offset = toe_kick_base_offset(cabinet)
+          door_z = reveal + toe_kick_offset
+          door_y = 0  # Door face flush with cabinet front
+          
+          door_specs = []
+          door_x = edge_start
+          
+          door_count.times do |i|
+            door_specs << {
+              x: door_x,
+              y: door_y,
+              z: door_z,
+              width: door_width,
+              height: door_height,
+              name: door_count == 1 ? "Glass Door" : "Glass Door #{i + 1}",
+              handle_side: door_count == 1 ? :right : (i.even? ? :right : :left)
+            }
+            door_x += door_width + center_reveal
+          end
+          
+          # Validate fronts_group before using it
+          unless fronts_group && fronts_group.valid?
+            puts "WARNING: fronts_group is invalid at start of display door creation"
+            return
+          end
+          
+          # Create the glass doors
+          door_specs.each do |spec|
+            unless fronts_group && fronts_group.valid?
+              puts "WARNING: fronts_group became invalid during door creation, stopping"
+              break
+            end
+            
+            # Create door group with descriptive name
+            door_group = fronts_group.entities.add_group
+            door_group.name = spec[:name]
+            
+            # Create glass door panel with frame
+            create_glass_door_panel(door_group.entities,
+                                   [spec[:x], spec[:y], spec[:z]],
+                                   spec[:width], thickness, spec[:height],
+                                   frame_width)
+            
+            # Add hardware to hardware group
+            add_door_handle(hardware_group.entities, spec[:x], spec[:y], spec[:z],
+                           spec[:width], spec[:height], thickness, spec[:handle_side])
+          end
+        end
+        
+        # Create a glass door panel with 1" wood frame around glass center
+        def create_glass_door_panel(entities, origin, width, thickness, height, frame_width)
+          x, y, z = origin
+          
+          # Skip if dimensions are invalid
+          return nil if width.abs < 0.001 || height.abs < 0.001 || thickness.abs < 0.001
+          
+          begin
+            back_y = y - thickness
+            
+            # Get or create the glass material
+            glass_material = get_or_create_glass_material
+            frame_material = @materials.drawer_face_material
+            
+            # Create the frame (4 pieces around the perimeter)
+            # Left frame piece
+            create_frame_piece(entities, x, y, z, frame_width, thickness, height, frame_material)
+            
+            # Right frame piece
+            create_frame_piece(entities, x + width - frame_width, y, z, frame_width, thickness, height, frame_material)
+            
+            # Bottom frame piece (between left and right)
+            create_frame_piece(entities, x + frame_width, y, z, width - (2 * frame_width), thickness, frame_width, frame_material)
+            
+            # Top frame piece (between left and right)
+            create_frame_piece(entities, x + frame_width, y, z + height - frame_width, width - (2 * frame_width), thickness, frame_width, frame_material)
+            
+            # Create the glass center (inset by frame_width on all sides)
+            glass_x = x + frame_width
+            glass_z = z + frame_width
+            glass_width = width - (2 * frame_width)
+            glass_height = height - (2 * frame_width)
+            glass_thickness = 0.25.inch  # 1/4" glass
+            
+            # Position glass slightly recessed from frame front
+            glass_y = y - (thickness - glass_thickness) / 2
+            
+            create_glass_panel(entities, glass_x, glass_y, glass_z, glass_width, glass_thickness, glass_height, glass_material)
+            
+            true
+          rescue => e
+            puts "ERROR in create_glass_door_panel: #{e.message}"
+            puts e.backtrace.first(3).join("\n")
+            false
+          end
+        end
+        
+        # Create a frame piece (solid wood)
+        def create_frame_piece(entities, x, y, z, width, thickness, height, material)
+          back_y = y - thickness
+          
+          pts = [
+            Geom::Point3d.new(x, y, z),
+            Geom::Point3d.new(x + width, y, z),
+            Geom::Point3d.new(x + width, y, z + height),
+            Geom::Point3d.new(x, y, z + height)
+          ]
+          front_face = entities.add_face(pts)
+          
+          back_pts = [
+            Geom::Point3d.new(x, back_y, z),
+            Geom::Point3d.new(x, back_y, z + height),
+            Geom::Point3d.new(x + width, back_y, z + height),
+            Geom::Point3d.new(x + width, back_y, z)
+          ]
+          entities.add_face(back_pts)
+          
+          # Left side
+          entities.add_face([
+            Geom::Point3d.new(x, y, z),
+            Geom::Point3d.new(x, y, z + height),
+            Geom::Point3d.new(x, back_y, z + height),
+            Geom::Point3d.new(x, back_y, z)
+          ])
+          
+          # Right side
+          entities.add_face([
+            Geom::Point3d.new(x + width, y, z),
+            Geom::Point3d.new(x + width, back_y, z),
+            Geom::Point3d.new(x + width, back_y, z + height),
+            Geom::Point3d.new(x + width, y, z + height)
+          ])
+          
+          # Top
+          entities.add_face([
+            Geom::Point3d.new(x, y, z + height),
+            Geom::Point3d.new(x + width, y, z + height),
+            Geom::Point3d.new(x + width, back_y, z + height),
+            Geom::Point3d.new(x, back_y, z + height)
+          ])
+          
+          # Bottom
+          entities.add_face([
+            Geom::Point3d.new(x, y, z),
+            Geom::Point3d.new(x, back_y, z),
+            Geom::Point3d.new(x + width, back_y, z),
+            Geom::Point3d.new(x + width, y, z)
+          ])
+          
+          # Apply material to all faces
+          entities.grep(Sketchup::Face).each do |face|
+            face.material = material
+            face.back_material = material
+          end
+        end
+        
+        # Create a glass panel
+        def create_glass_panel(entities, x, y, z, width, thickness, height, material)
+          back_y = y - thickness
+          
+          # Front face
+          front_pts = [
+            Geom::Point3d.new(x, y, z),
+            Geom::Point3d.new(x + width, y, z),
+            Geom::Point3d.new(x + width, y, z + height),
+            Geom::Point3d.new(x, y, z + height)
+          ]
+          front_face = entities.add_face(front_pts)
+          
+          # Back face
+          back_pts = [
+            Geom::Point3d.new(x, back_y, z),
+            Geom::Point3d.new(x, back_y, z + height),
+            Geom::Point3d.new(x + width, back_y, z + height),
+            Geom::Point3d.new(x + width, back_y, z)
+          ]
+          entities.add_face(back_pts)
+          
+          # Left side
+          entities.add_face([
+            Geom::Point3d.new(x, y, z),
+            Geom::Point3d.new(x, y, z + height),
+            Geom::Point3d.new(x, back_y, z + height),
+            Geom::Point3d.new(x, back_y, z)
+          ])
+          
+          # Right side
+          entities.add_face([
+            Geom::Point3d.new(x + width, y, z),
+            Geom::Point3d.new(x + width, back_y, z),
+            Geom::Point3d.new(x + width, back_y, z + height),
+            Geom::Point3d.new(x + width, y, z + height)
+          ])
+          
+          # Top
+          entities.add_face([
+            Geom::Point3d.new(x, y, z + height),
+            Geom::Point3d.new(x + width, y, z + height),
+            Geom::Point3d.new(x + width, back_y, z + height),
+            Geom::Point3d.new(x, back_y, z + height)
+          ])
+          
+          # Bottom
+          entities.add_face([
+            Geom::Point3d.new(x, y, z),
+            Geom::Point3d.new(x, back_y, z),
+            Geom::Point3d.new(x + width, back_y, z),
+            Geom::Point3d.new(x + width, y, z)
+          ])
+          
+          # Apply glass material to all faces
+          entities.grep(Sketchup::Face).each do |face|
+            # Only apply to glass faces (check bounds)
+            bounds = face.bounds
+            if bounds.min.x >= x - 0.01 && bounds.max.x <= x + width + 0.01 &&
+               bounds.min.z >= z - 0.01 && bounds.max.z <= z + height + 0.01
+              face.material = material
+              face.back_material = material
+            end
+          end
+        end
+        
+        # Get or create the glass material
+        def get_or_create_glass_material
+          material_name = "display_cabinet_glass"
+          material = @model.materials[material_name]
+          
+          unless material
+            material = @model.materials.add(material_name)
+            # Light blue-ish tint for glass
+            material.color = Sketchup::Color.new(200, 220, 240)
+            material.alpha = 0.3  # Transparent
+          end
+          
+          material
+        end
+        
         # Build doors
         def build_doors(fronts_group, hardware_group, cabinet, door_count, start_z, total_height, graduated = false)
           return if door_count.nil? || door_count <= 0
@@ -664,7 +939,7 @@ module MikMort
 
         def toe_kick_base_offset(cabinet)
           case cabinet.type
-          when :base, :island, :corner_base
+          when :base, :island, :corner_base, :display_base
             Constants::BASE_CABINET[:toe_kick_height].inch
           when :miele_dishwasher
             Constants::MIELE_DISHWASHER[:toe_kick_height].inch

@@ -190,6 +190,16 @@ module MikMort
           @width = 24.0
           @depth = Constants::WALL_CABINET[:depth]
           @height = 36.0
+        when :display_base
+          # Display cabinet as base - has toe kick
+          @width = 24.0
+          @depth = Constants::BASE_CABINET[:depth]
+          @height = Constants::BASE_CABINET[:height]
+        when :display_wall
+          # Display cabinet as wall - no toe kick
+          @width = 24.0
+          @depth = Constants::WALL_CABINET[:depth]
+          @height = Constants::WALL_CABINET[:height_standard]
         when :subzero_fridge
           # Default to 36" Classic series model (most common)
           series = @options[:series] || :classic

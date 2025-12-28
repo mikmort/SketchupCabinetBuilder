@@ -249,6 +249,9 @@ module MikMort
           :tall
         when '3_door_graduated'
           :base  # 3 doors with graduated sizing
+        when 'display'
+          # Display cabinet respects run type for toe kick
+          run_type == 'wall' ? :display_wall : :display_base
         else
           :base
         end
@@ -271,6 +274,8 @@ module MikMort
           return :door  # Single door
         when '3_door_graduated'
           return '3_doors_graduated'
+        when 'display'
+          return nil  # Use door_count from params for display cabinets
         else
           return nil  # Use individual params
         end
@@ -375,6 +380,12 @@ module MikMort
             options[:has_seating_side] = cabinet_params['has_seating_side']
           end
           
+          # Add door count for display cabinets
+          if type == :display_base || type == :display_wall
+            options[:door_count] = cabinet_params['door_count'].to_i
+            puts "DEBUG: Display cabinet door_count set to: #{options[:door_count]}"
+          end
+          
           # Create the cabinet
           puts "Creating cabinet with options: #{options.inspect}"
           cabinet = Cabinet.new(type, options)
@@ -402,6 +413,11 @@ module MikMort
             # Add LED light strip if requested (for wall cabinets)
             if cabinet_params['has_led_light_strip'] && (type == :wall || run_type == 'wall')
               add_led_light_strip(result, generator.current_run)
+            end
+            
+            # Add interior side LEDs for display cabinets (automatic)
+            if type == :display_base || type == :display_wall
+              add_display_cabinet_leds(result, generator.current_run, type)
             end
           end
         rescue => e
@@ -446,6 +462,49 @@ module MikMort
         rescue => e
           model.abort_operation if model
           puts "Error adding LED light strip: #{e.message}"
+          puts e.backtrace.first(10).join("\n")
+        end
+      end
+      
+      # Add interior side LED strips to a display cabinet
+      def add_display_cabinet_leds(cabinet_group, current_run, cabinet_type = :display_wall)
+        begin
+          model = Sketchup.active_model
+          
+          # Determine if cabinet has toe kick based on type
+          has_toe_kick = (cabinet_type == :display_base)
+          
+          # Find the carcass group that contains this cabinet
+          carcass_group = current_run&.carcass_group
+          
+          puts "DEBUG add_display_cabinet_leds: current_run=#{current_run.inspect}"
+          puts "DEBUG add_display_cabinet_leds: carcass_group=#{carcass_group.inspect}"
+          puts "DEBUG add_display_cabinet_leds: carcass_group valid?=#{carcass_group&.valid?}"
+          puts "DEBUG add_display_cabinet_leds: has_toe_kick=#{has_toe_kick}"
+          
+          if carcass_group && carcass_group.valid?
+            # Get run name for placeholder naming
+            run_name = current_run.name || "Display"
+            
+            puts "DEBUG add_display_cabinet_leds: Creating interior LED strips for '#{run_name}'"
+            
+            # Wrap in its own operation
+            model.start_operation('Add Display Cabinet LEDs', true)
+            
+            # Create the LED recess builder and add interior side LEDs
+            builder = Geometry::LEDRecessBuilder.new(model)
+            result = builder.create_interior_side_leds(carcass_group, run_name, has_toe_kick)
+            
+            puts "DEBUG add_display_cabinet_leds: create_interior_side_leds returned #{result.inspect}"
+            
+            model.commit_operation
+            puts "DEBUG: Interior LED strips added to display cabinet"
+          else
+            puts "DEBUG: Could not find valid carcass group for display cabinet LEDs"
+          end
+        rescue => e
+          model.abort_operation if model
+          puts "Error adding display cabinet LEDs: #{e.message}"
           puts e.backtrace.first(10).join("\n")
         end
       end

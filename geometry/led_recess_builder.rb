@@ -120,6 +120,263 @@ module MikMort
           recess_group
         end
         
+        # Create vertical LED strips on interior sides of display cabinet
+        # @param group [Sketchup::Group] The carcass group containing cabinet geometry
+        # @param run_name [String] The name of the run (for naming placeholders)
+        # @param has_toe_kick [Boolean] Whether this cabinet has a toe kick
+        # @return [Sketchup::Group] The LED recess group created
+        def create_interior_side_leds(group, run_name = "Display", has_toe_kick = false)
+          return nil unless group.is_a?(Sketchup::Group)
+          
+          @run_name = run_name
+          @placeholder_counter = 0
+          
+          carcass_entities = group.entities
+          
+          # Get the bounding box of the cabinet
+          local_bounds = get_local_bounds(group)
+          cab_width = local_bounds.max.x - local_bounds.min.x
+          cab_depth = local_bounds.max.y - local_bounds.min.y
+          cab_height = local_bounds.max.z - local_bounds.min.z
+          min_z = local_bounds.min.z
+          
+          # Use standard toe kick height if cabinet has toe kick
+          toe_kick_height = has_toe_kick ? Constants::BASE_CABINET[:toe_kick_height].inch : 0
+          bottom_panel_z = min_z + toe_kick_height
+          
+          # Panel thickness
+          panel_thickness = 0.75.inch  # 3/4"
+          
+          # LED strip dimensions (converted to inches)
+          # For interior side LEDs, use shallower depth (15mm instead of 25mm) so blocker doesn't stick out
+          recess_width = mm_to_inch(RECESS_WIDTH)    # 15mm = ~0.59" - thin dimension along Y
+          recess_depth = mm_to_inch(RECESS_DEPTH - 10.0)  # 15mm = ~0.59" - depth into panel along X
+          edge_offset = mm_to_inch(EDGE_OFFSET)      # 19.05mm = 3/4" - offset from front
+          side_inset = mm_to_inch(SIDE_INSET)        # 2mm
+          blocker_height = mm_to_inch(BLOCKER_HEIGHT) # 10mm - height of blocker lip
+          placeholder_size = mm_to_inch(PLACEHOLDER_SIZE) # 2mm
+          
+          # LED strip runs vertically from just above bottom panel to just below top panel
+          # Account for toe kick - start above the bottom panel, not at cabinet min_z
+          led_start_z = bottom_panel_z + panel_thickness + side_inset
+          led_end_z = min_z + cab_height - panel_thickness - side_inset
+          led_length = led_end_z - led_start_z
+          
+          puts "DEBUG Interior Side LEDs: cab_width=#{cab_width}, cab_height=#{cab_height}, toe_kick=#{toe_kick_height}, led_start_z=#{led_start_z}, led_length=#{led_length}"
+          
+          # Create a group for the LED components
+          led_group = carcass_entities.add_group
+          led_group.name = "Interior LED Strips"
+          led_entities = led_group.entities
+          
+          # Create left interior LED strip
+          @placeholder_counter += 1
+          create_left_interior_led(led_entities, cab_width, cab_depth, cab_height, min_z, panel_thickness,
+                                   led_start_z, led_length, edge_offset, recess_width, recess_depth,
+                                   blocker_height, placeholder_size, side_inset)
+          
+          # Create right interior LED strip
+          @placeholder_counter += 1
+          create_right_interior_led(led_entities, cab_width, cab_depth, cab_height, min_z, panel_thickness,
+                                    led_start_z, led_length, edge_offset, recess_width, recess_depth,
+                                    blocker_height, placeholder_size, side_inset)
+          
+          led_group
+        end
+        
+        # Detect toe kick height by finding the bottom panel's Z position
+        def detect_toe_kick_height(group)
+          # Look for horizontal faces that could be the bottom panel
+          # The bottom panel will be above any toe kick
+          bottom_faces = []
+          
+          group.entities.grep(Sketchup::Face).each do |face|
+            # Looking for upward-facing horizontal faces (bottom of cabinet interior)
+            if face.normal.z > 0.9
+              bottom_faces << face.bounds.min.z
+            end
+          end
+          
+          # Also check nested groups
+          group.entities.grep(Sketchup::Group).each do |subgroup|
+            subgroup.entities.grep(Sketchup::Face).each do |face|
+              if face.normal.z > 0.9
+                # Transform to parent coordinates
+                z = (subgroup.transformation * face.bounds.min).z
+                bottom_faces << z
+              end
+            end
+          end
+          
+          if bottom_faces.any?
+            # The lowest upward-facing face above z=0 is likely the bottom panel
+            # Standard toe kick is 4.5"
+            min_bottom = bottom_faces.min
+            bounds_min = get_local_bounds(group).min.z
+            toe_kick = min_bottom - bounds_min
+            
+            # Only count as toe kick if it's a reasonable height (3-6 inches)
+            if toe_kick > 2.inch && toe_kick < 7.inch
+              puts "DEBUG: Detected toe kick height: #{toe_kick}"
+              return toe_kick
+            end
+          end
+          
+          0  # No toe kick detected
+        end
+        
+        # Create a vertical LED strip on the interior left side panel
+        def create_left_interior_led(entities, cab_width, cab_depth, cab_height, min_z, panel_thickness,
+                                     led_start_z, led_length, edge_offset, recess_width, recess_depth,
+                                     blocker_height, placeholder_size, side_inset)
+          
+          # Position: RECESSED into the interior face of the left panel
+          # The blocker should be partially inside the panel (recessed)
+          # X: recessed into left panel, so starts at (panel_thickness - recess_depth)
+          # Y: offset from front edge (edge_offset) 
+          # Z: runs from led_start_z vertically
+          
+          # Recess into the panel - blocker_height extends into cabinet from recess
+          recess_x = panel_thickness - recess_depth
+          y_start = edge_offset
+          
+          puts "DEBUG Left Interior LED: recess_x=#{recess_x}, y=#{y_start}, z=#{led_start_z}, length=#{led_length}"
+          
+          # Create vertical light blocker (runs along Z axis)
+          # Blocker is recessed into panel, with blocker_height extending into cabinet
+          blocker_x = recess_x
+          blocker_y = y_start
+          blocker_z = led_start_z
+          
+          create_vertical_interior_blocker(entities, led_length, recess_depth, recess_width,
+                                           blocker_x, blocker_y, blocker_z, :left)
+          
+          # Create vertical light placeholder (runs along Z axis)
+          # Placeholder should be on the INSIDE of the blocker (facing cabinet center)
+          # For left side: at the right edge of the blocker (x + recess_depth - placeholder_size)
+          placeholder_length = led_length - (2 * side_inset)
+          placeholder_x = recess_x + recess_depth - placeholder_size  # Inside edge of blocker
+          placeholder_y = y_start + (recess_width / 2.0) - (placeholder_size / 2.0)
+          placeholder_z = led_start_z + side_inset
+          placeholder_name = "#{@run_name} - Left LED Strip #{@placeholder_counter}"
+          
+          create_vertical_interior_placeholder(entities, placeholder_length, placeholder_size,
+                                               placeholder_x, placeholder_y, placeholder_z, placeholder_name)
+        end
+        
+        # Create a vertical LED strip on the interior right side panel
+        def create_right_interior_led(entities, cab_width, cab_depth, cab_height, min_z, panel_thickness,
+                                      led_start_z, led_length, edge_offset, recess_width, recess_depth,
+                                      blocker_height, placeholder_size, side_inset)
+          
+          # Position: RECESSED into the interior face of the right panel
+          # X: recessed into right panel, starts at (cab_width - panel_thickness)
+          # Y: offset from front edge (edge_offset)
+          # Z: runs from led_start_z vertically
+          
+          # Recess into the panel
+          recess_x = cab_width - panel_thickness
+          y_start = edge_offset
+          
+          puts "DEBUG Right Interior LED: recess_x=#{recess_x}, y=#{y_start}, z=#{led_start_z}, length=#{led_length}"
+          
+          # Create vertical light blocker (runs along Z axis)
+          blocker_x = recess_x
+          blocker_y = y_start
+          blocker_z = led_start_z
+          
+          create_vertical_interior_blocker(entities, led_length, recess_depth, recess_width,
+                                           blocker_x, blocker_y, blocker_z, :right)
+          
+          # Create vertical light placeholder (runs along Z axis)
+          # Placeholder should be on the INSIDE of the blocker (facing cabinet center)
+          # For right side: at the left edge of the blocker (recess_x + small offset)
+          placeholder_length = led_length - (2 * side_inset)
+          placeholder_x = recess_x  # Inside edge of blocker (left side of recess)
+          placeholder_y = y_start + (recess_width / 2.0) - (placeholder_size / 2.0)
+          placeholder_z = led_start_z + side_inset
+          placeholder_name = "#{@run_name} - Right LED Strip #{@placeholder_counter}"
+          
+          create_vertical_interior_placeholder(entities, placeholder_length, placeholder_size,
+                                               placeholder_x, placeholder_y, placeholder_z, placeholder_name)
+        end
+        
+        # Create a vertical light blocker for interior side LED
+        # Blocker orientation: thin along Y (recess_width), extends into panel along X (recess_depth), runs vertically along Z
+        def create_vertical_interior_blocker(entities, length, recess_depth_param, recess_width_param, x, y, z, side)
+          blocker_group = entities.add_group
+          blocker_group.name = side == :left ? "Left Light Blocker" : "Right Light Blocker"
+          blocker_entities = blocker_group.entities
+          
+          model = Sketchup.active_model
+          materials = model.materials
+          black_material = materials['LED_Blocker_Black']
+          unless black_material
+            black_material = materials.add('LED_Blocker_Black')
+            black_material.color = Sketchup::Color.new(20, 20, 20)
+          end
+          
+          # Create vertical box:
+          # - recess_depth along X (into/out of panel)
+          # - recess_width along Y (thin, parallel to panel face)
+          # - length along Z (vertical run)
+          pts = [
+            Geom::Point3d.new(x, y, z),
+            Geom::Point3d.new(x + recess_depth_param, y, z),
+            Geom::Point3d.new(x + recess_depth_param, y + recess_width_param, z),
+            Geom::Point3d.new(x, y + recess_width_param, z)
+          ]
+          
+          face = blocker_entities.add_face(pts)
+          if face && face.valid?
+            face.reverse! if face.normal.z < 0
+            face.pushpull(length)
+          end
+          
+          blocker_entities.grep(Sketchup::Face).each do |f|
+            f.material = black_material
+            f.back_material = black_material
+          end
+          
+          blocker_group
+        end
+        
+        # Create a vertical light placeholder for interior side LED
+        def create_vertical_interior_placeholder(entities, length, size, x, y, z, name)
+          placeholder_group = entities.add_group
+          placeholder_group.name = name
+          placeholder_entities = placeholder_group.entities
+          
+          model = Sketchup.active_model
+          materials = model.materials
+          white_material = materials['LED_Light_Placeholder']
+          unless white_material
+            white_material = materials.add('LED_Light_Placeholder')
+            white_material.color = Sketchup::Color.new(255, 255, 240)
+          end
+          
+          # Create vertical box: size along X, size along Y, length along Z
+          pts = [
+            Geom::Point3d.new(x, y, z),
+            Geom::Point3d.new(x + size, y, z),
+            Geom::Point3d.new(x + size, y + size, z),
+            Geom::Point3d.new(x, y + size, z)
+          ]
+          
+          face = placeholder_entities.add_face(pts)
+          if face && face.valid?
+            face.reverse! if face.normal.z < 0
+            face.pushpull(length)
+          end
+          
+          placeholder_entities.grep(Sketchup::Face).each do |f|
+            f.material = white_material
+            f.back_material = white_material
+          end
+          
+          placeholder_group
+        end
+        
         private
         
         def mm_to_inch(mm)

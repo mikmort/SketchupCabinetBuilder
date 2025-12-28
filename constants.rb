@@ -239,7 +239,9 @@ module MikMort
         :subzero_fridge,
         :miele_dishwasher,
         :range,
-        :wall_oven
+        :wall_oven,
+        :display_base,
+        :display_wall
       ].freeze
       
       # Frame Types
